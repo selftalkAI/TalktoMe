@@ -1,5 +1,6 @@
 version: '3.9'
 
+# Data layer for the Orchestration Service (see Docs/selfieMe_Architecture_Design_Document.md §4).
 services:
   postgres:
     image: postgres:16

@@ -1,5 +1,5 @@
 {
-  "name": "selfie-me-frontend",
+  "name": "selfie-me-observability-portal",
   "private": true,
   "scripts": {
     "dev": "next dev",

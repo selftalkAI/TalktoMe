@@ -5,10 +5,10 @@ __pycache__/
 .venv/
 
 # Node
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/.vercel/
+observability-portal/node_modules/
+observability-portal/.next/
+observability-portal/out/
+observability-portal/.vercel/
 
 # OS
 .DS_Store

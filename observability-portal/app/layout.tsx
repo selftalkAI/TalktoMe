@@ -2,8 +2,8 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'selfie.Me',
-  description: 'Privacy-first personal memory AI starter app',
+  title: 'me',
+  description: 'A daily record of your own thoughts, reflected back to you — nothing else.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
