@@ -1,129 +1,585 @@
 :root {
-  --bg: #171310;
-  --bg-warm: radial-gradient(circle at top, #241c16 0%, #171310 45%);
-  --paper: rgba(255, 247, 237, 0.03);
-  --paper-border: rgba(255, 214, 165, 0.14);
-  --text: #f3e9dd;
-  --muted: #b9a894;
-  --accent: #e8a04d;
-  --accent-soft: rgba(232, 160, 77, 0.16);
-  --calm: #8fbfa0;
+  --accent: #1d8cf0;
+  --accent-dark: #0a6fd1;
+  --accent-soft: #eaf4fe;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e7e9ec;
+  --text: #1c1e21;
+  --muted: #65676b;
+  --calm: #2fa84f;
+  --calm-soft: #eaf7ee;
+  --danger: #e0245e;
+  --header-h: 3.6rem;
+  --tab-bar-h: 3.8rem;
+  --font: var(--font-ui), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-display), Georgia, serif;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
-  background: var(--bg-warm);
+  height: 100%;
+  font-family: var(--font);
+  background: #e4e6e9;
   color: var(--text);
+  overscroll-behavior: none;
 }
 
 button, input, textarea, select {
-  font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-family: var(--font);
 }
 
-.shell {
-  max-width: 640px;
+button {
+  touch-action: manipulation;
+}
+
+/* App shell — sized like a phone screen. Full-bleed on an actual phone;
+   framed as a device on a wider browser so the layout stays honest. */
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 430px;
   margin: 0 auto;
-  padding: 2.4rem 1.25rem 5rem;
+  overflow: hidden;
+  background: var(--bg);
+  isolation: isolate;
 }
 
-.top {
+@media (min-width: 431px) {
+  .app-shell {
+    height: min(100dvh, 900px);
+    margin: env(safe-area-inset-top, 1.5rem) auto;
+    border-radius: 32px;
+    border: 1px solid var(--border);
+    box-shadow: 0 30px 70px -30px rgba(20, 20, 30, 0.35);
+  }
+}
+
+.app-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 2.4rem;
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 1.1rem 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  z-index: 5;
 }
 
 .brand {
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 1.1rem;
+  font-weight: 800;
   color: var(--accent);
 }
 
-.tabs {
+.streak-badge {
   display: flex;
-  gap: 0.4rem;
-  background: var(--paper);
-  border: 1px solid var(--paper-border);
-  border-radius: 999px;
-  padding: 0.3rem;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #c9741a;
 }
 
-.tab {
+.streak-flame {
+  font-size: 0.9rem;
+}
+
+.app-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.9rem 0.9rem calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 5.2rem);
+}
+
+/* The top "Hi you / What's your thoughts" bar — Facebook's own composer-prompt
+   pattern: a friendly greeting sitting directly above a tappable input, so
+   starting an entry needs no separate button to notice or explain. */
+.prompt-bar {
+  margin-bottom: 1.1rem;
+  cursor: pointer;
+}
+
+.prompt-greeting {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.7rem;
+  color: var(--text);
+}
+
+.prompt-pill {
+  background: #f0f2f5;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+}
+
+.empty-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.empty-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.empty-body.center,
+.hint.center {
+  text-align: center;
+  padding: 1.2rem 0.5rem;
+}
+
+.feed {
+  display: grid;
+  gap: 0;
+}
+
+.moment-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0.95rem 0 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.moment-card:last-child {
+  border-bottom: none;
+}
+
+.moment-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.mood-pill {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.moment-time {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.moment-photo {
+  width: 100%;
+  border-radius: 12px;
+  margin-bottom: 0.65rem;
+  max-height: 300px;
+  object-fit: cover;
+}
+
+.moment-content {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.reflect-btn {
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reflecting {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.dot-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Reflection shown as a message bubble — a deliberate framing choice: it
+   reads as something being said back to you, not another block of body
+   copy, which is what makes it the memorable "peak" of the entry. */
+.reflection-bubble {
+  background: var(--calm-soft);
+  border-radius: 14px;
+  border-top-left-radius: 4px;
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.3rem;
+}
+
+.reflection-bubble p {
+  margin: 0;
+  line-height: 1.55;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+/* Evolution tab */
+.evolution h1 {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.5rem;
+  margin: 0.2rem 0 1rem;
+}
+
+.range-row {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 1.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+
+.range-row::-webkit-scrollbar {
+  display: none;
+}
+
+.range-chip {
+  flex: 0 0 auto;
+  border: none;
+  background: #f0f2f5;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.42rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.range-chip.selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Stat row styled like a profile stats strip — a familiar, low-effort way
+   to read your own volume/consistency at a glance. */
+.stat-row {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0 1.2rem;
+  margin-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.stat strong {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.stat span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+}
+
+.mood-breakdown {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.4rem;
+}
+
+.mood-bar-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 22px;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.mood-bar-track {
+  background: var(--bg);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.mood-bar-fill {
+  background: var(--accent);
+  height: 100%;
+  border-radius: 999px;
+}
+
+.mood-bar-count {
+  color: var(--muted);
+  text-align: right;
+  font-size: 0.78rem;
+}
+
+.narrative-btn {
+  width: 100%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.narrative-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.narrative-card {
+  background: var(--accent-soft);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+}
+
+.narrative-card p {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  line-height: 1.6;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0.4rem 0 0;
+}
+
+/* Floating action button — the single, always-reachable way to start an
+   entry (Fogg's "ability" lever: one obvious, low-friction trigger). */
+.fab {
+  position: absolute;
+  right: 1.1rem;
+  bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 0.9rem);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 22px -6px rgba(29, 140, 240, 0.55);
+  cursor: pointer;
+  z-index: 15;
+}
+
+.fab:active {
+  transform: scale(0.94);
+}
+
+/* Bottom tab bar */
+.tab-bar {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  height: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-bar-item.active {
+  color: var(--accent);
+}
+
+/* Composer — full-screen sheet, the same "new post" pattern used by every
+   major social app: minimal fields, disabled Save until valid (Hick's Law +
+   error prevention), single obvious exit. */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.composer-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sheet-grabber-row {
+  display: flex;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.55rem) 0 0.3rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.sheet-grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.composer-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 1rem 0.9rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.composer-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.composer-cancel,
+.composer-save {
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.composer-cancel {
+  color: var(--muted);
+}
+
+.composer-save {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.composer-save:disabled,
+.composer-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.composer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.1rem 1rem calc(env(safe-area-inset-bottom, 0px) + 2rem);
+}
+
+/* Segmented control — the standard iOS/mobile pattern for a small, fixed
+   set of mutually exclusive choices; keeps the decision cheap (Hick's Law). */
+.segmented {
+  display: flex;
+  background: #f0f2f5;
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 1rem;
+}
+
+.segment {
+  flex: 1;
   border: none;
   background: transparent;
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 0.5rem 1rem;
-  border-radius: 999px;
+  padding: 0.5rem 0;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-.tab.active {
-  background: var(--accent);
-  color: #241606;
-}
-
-.date-label {
-  color: var(--muted);
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 0.4rem;
-}
-
-.composer h1 {
-  font-size: 1.9rem;
-  margin: 0 0 1.4rem;
-  font-weight: 400;
-}
-
-.mood-row,
-.source-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.mood-chip,
-.source-chip,
-.range-chip {
-  border: 1px solid var(--paper-border);
-  background: var(--paper);
+.segment.selected {
+  background: var(--surface);
   color: var(--text);
-  border-radius: 999px;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.mood-chip.selected,
-.source-chip.selected,
-.range-chip.selected {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12);
 }
 
 textarea {
   width: 100%;
-  background: var(--paper);
-  border: 1px solid var(--paper-border);
-  border-radius: 16px;
+  background: #f0f2f5;
+  border: none;
+  border-radius: 14px;
   color: var(--text);
-  padding: 1rem 1.1rem;
-  font-size: 1.02rem;
-  line-height: 1.6;
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  line-height: 1.55;
   resize: vertical;
   margin-bottom: 0.9rem;
+}
+
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .voice-row,
@@ -132,236 +588,37 @@ textarea {
 }
 
 .record-btn {
-  border: 1px solid var(--paper-border);
-  background: var(--paper);
+  border: none;
+  background: #f0f2f5;
   color: var(--text);
   border-radius: 999px;
-  padding: 0.65rem 1.1rem;
+  padding: 0.6rem 1rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .record-btn.recording {
-  background: rgba(232, 96, 77, 0.16);
-  border-color: #e8604d;
-  color: #ff9d8a;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin: 0.4rem 0 0;
+  background: #fdeceb;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .photo-preview {
   display: block;
   margin-top: 0.7rem;
-  max-width: 220px;
+  max-width: 200px;
   border-radius: 12px;
-  border: 1px solid var(--paper-border);
+  border: 1px solid var(--border);
 }
 
 .error-text {
-  color: #ff9d8a;
-  font-size: 0.88rem;
-  margin: 0 0 0.8rem;
-}
-
-.save-btn {
-  width: 100%;
-  border: none;
-  background: var(--accent);
-  color: #241606;
-  font-weight: 700;
-  font-size: 1rem;
-  border-radius: 14px;
-  padding: 0.95rem;
-  cursor: pointer;
-}
-
-.save-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.feed {
-  margin-top: 2.6rem;
-  display: grid;
-  gap: 1.2rem;
-}
-
-.empty {
-  color: var(--muted);
-  text-align: center;
-  padding: 2rem 0;
-  font-style: italic;
-}
-
-.moment-card {
-  background: var(--paper);
-  border: 1px solid var(--paper-border);
-  border-radius: 18px;
-  padding: 1.1rem 1.2rem;
-}
-
-.moment-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.6rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.moment-photo {
-  width: 100%;
-  border-radius: 12px;
-  margin-bottom: 0.7rem;
-  max-height: 320px;
-  object-fit: cover;
-}
-
-.moment-content {
-  margin: 0 0 0.8rem;
-  line-height: 1.65;
-  font-size: 1rem;
-}
-
-.reflect-btn {
-  border: 1px solid var(--paper-border);
-  background: transparent;
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 0.5rem 1rem;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.reflecting {
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-style: italic;
-  margin: 0;
-}
-
-.reflection {
-  background: rgba(143, 191, 160, 0.08);
-  border-left: 2px solid var(--calm);
-  border-radius: 8px;
-  padding: 0.8rem 1rem;
-  margin-top: 0.6rem;
-}
-
-.reflection-label {
-  display: block;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.68rem;
-  color: var(--calm);
-  margin-bottom: 0.4rem;
-}
-
-.reflection p {
-  margin: 0;
-  line-height: 1.65;
-  font-size: 0.95rem;
-  color: var(--text);
-}
-
-.evolution h1 {
-  font-size: 1.7rem;
-  font-weight: 400;
-  margin: 0 0 1.2rem;
-}
-
-.range-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1.6rem;
-}
-
-.stat-row {
-  display: flex;
-  gap: 0.8rem;
-  margin-bottom: 1.6rem;
-}
-
-.stat {
-  flex: 1;
-  background: var(--paper);
-  border: 1px solid var(--paper-border);
-  border-radius: 14px;
-  padding: 1rem;
-  text-align: center;
-}
-
-.stat strong {
-  display: block;
-  font-size: 1.8rem;
-  color: var(--accent);
-}
-
-.stat span {
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.mood-breakdown {
-  display: grid;
-  gap: 0.6rem;
-  margin-bottom: 1.6rem;
-}
-
-.mood-bar-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 24px;
-  align-items: center;
-  gap: 0.6rem;
+  color: var(--danger);
   font-size: 0.85rem;
+  margin: 0 0 0.8rem;
 }
 
-.mood-bar-track {
-  background: var(--paper);
-  border: 1px solid var(--paper-border);
-  border-radius: 999px;
-  height: 10px;
-  overflow: hidden;
-}
-
-.mood-bar-fill {
-  background: var(--accent);
-  height: 100%;
-}
-
-.mood-bar-count {
-  color: var(--muted);
-  text-align: right;
-}
-
-.narrative-btn {
-  width: 100%;
-  border: 1px solid var(--paper-border);
-  background: var(--paper);
-  color: var(--text);
-  border-radius: 14px;
-  padding: 0.9rem;
-  font-size: 0.95rem;
-  cursor: pointer;
-  margin-bottom: 1rem;
-}
-
-.narrative-text {
-  background: rgba(232, 160, 77, 0.08);
-  border-left: 2px solid var(--accent);
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  line-height: 1.7;
-  font-size: 1rem;
-}
-
-@media (max-width: 480px) {
+@media (max-width: 380px) {
   .mood-bar-row {
-    grid-template-columns: 90px 1fr 20px;
+    grid-template-columns: 78px 1fr 20px;
   }
 }
