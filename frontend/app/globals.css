@@ -340,3 +340,288 @@ h1 {
   margin-top: 1.6rem;
   flex-wrap: wrap;
 }
+
+/* Today screen — warm dark theme, scoped locally so it doesn't affect
+   the welcome screen's blue palette above. */
+.today-shell {
+  --today-bg: #14100c;
+  --today-frame-border: rgba(255, 255, 255, 0.08);
+  --today-card: #1d1712;
+  --today-card-border: rgba(255, 255, 255, 0.07);
+  --today-text: #f1e9df;
+  --today-muted: #9a9086;
+  --today-accent: #e0a458;
+  --today-accent-soft: rgba(224, 164, 88, 0.14);
+  --today-reflection-border: #7d9a86;
+  --today-reflection-label: #8fae9a;
+
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--today-bg);
+  padding: 1.5rem 1rem;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.today-frame {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  height: min(880px, 92vh);
+  background: var(--today-bg);
+  border: 1px solid var(--today-frame-border);
+  border-radius: 32px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+}
+
+.today-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--today-frame-border);
+}
+
+.today-logo {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-style: italic;
+  font-size: 1.6rem;
+  color: var(--today-accent);
+  text-decoration: none;
+}
+
+.today-date {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  color: var(--today-muted);
+}
+
+.today-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.25rem 6.5rem;
+}
+
+.entry-stack {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.today-empty {
+  color: var(--today-muted);
+  font-size: 0.95rem;
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.entry-card {
+  background: var(--today-card);
+  border: 1px solid var(--today-card-border);
+  border-radius: 18px;
+  padding: 1.1rem 1.15rem;
+}
+
+.entry-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.entry-mood {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--today-muted);
+  font-size: 0.92rem;
+}
+
+.entry-mood-emoji {
+  font-size: 1.05rem;
+}
+
+.entry-time {
+  color: var(--today-muted);
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+.entry-content {
+  margin: 0;
+  color: var(--today-text);
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.belief-confidence {
+  margin-top: 0.7rem;
+  color: var(--today-accent);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.78rem;
+}
+
+.reflection-card {
+  margin-top: 1rem;
+  padding: 0.95rem 1rem 1rem 1.1rem;
+  border-left: 3px solid var(--today-reflection-border);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px 10px 10px 4px;
+}
+
+.reflection-label {
+  display: block;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--today-reflection-label);
+  margin-bottom: 0.55rem;
+}
+
+.reflection-text {
+  margin: 0;
+  color: var(--today-text);
+  opacity: 0.92;
+  font-size: 0.98rem;
+  line-height: 1.65;
+}
+
+.today-fab {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 5.75rem;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--today-accent);
+  color: #241a0c;
+  border: none;
+  font-size: 1.7rem;
+  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(224, 164, 88, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.today-nav {
+  display: flex;
+  border-top: 1px solid var(--today-frame-border);
+  background: var(--today-bg);
+}
+
+.today-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.85rem 0 1.1rem;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--today-muted);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.today-nav-item.active {
+  color: var(--today-accent);
+}
+
+.composer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  z-index: 10;
+}
+
+.composer-sheet {
+  width: 100%;
+  background: var(--today-card);
+  border-top: 1px solid var(--today-card-border);
+  border-radius: 24px 24px 0 0;
+  padding: 1.5rem 1.4rem 1.75rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.composer-sheet h2 {
+  margin: 0;
+  color: var(--today-text);
+  font-size: 1.2rem;
+}
+
+.mood-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--today-card-border);
+  border-radius: 999px;
+  color: var(--today-muted);
+  padding: 0.45rem 0.8rem;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mood-chip.active {
+  border-color: var(--today-accent);
+  color: var(--today-accent);
+  background: var(--today-accent-soft);
+}
+
+.composer-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--today-card-border);
+  border-radius: 14px;
+  color: var(--today-text);
+  padding: 0.85rem 0.95rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.composer-input::placeholder {
+  color: var(--today-muted);
+}
+
+.composer-actions {
+  display: flex;
+  gap: 0.75rem;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.composer-actions button[type='submit'] {
+  background: var(--today-accent);
+  color: #241a0c;
+}
+
+.composer-actions button.secondary {
+  background: transparent;
+  color: var(--today-muted);
+  border: 1px solid var(--today-card-border);
+}

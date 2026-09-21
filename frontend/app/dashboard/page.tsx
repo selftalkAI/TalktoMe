@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-type MemoryItem = {
+type EntryItem = {
   id: string;
-  title: string;
-  type: string;
-  summary: string;
+  mood_emoji: string;
+  mood_label: string;
+  content: string;
   created_at: string;
-  tags?: string[];
+  reflection?: string | null;
 };
 
 type BeliefItem = {
@@ -19,214 +19,230 @@ type BeliefItem = {
   summary: string;
 };
 
-const initialForm = {
-  source: 'text',
-  content: '',
-  tags: 'personal, reflection',
-};
+type Tab = 'today' | 'evolution';
 
-export default function HomePage() {
-  const [memories, setMemories] = useState<MemoryItem[]>([]);
+const MOOD_OPTIONS = [
+  { emoji: '\u{1F60A}', label: 'Good' },
+  { emoji: '\u{1F60C}', label: 'Calm' },
+  { emoji: '\u{1F624}', label: 'Frustrated' },
+  { emoji: '\u{1F614}', label: 'Low' },
+  { emoji: '\u{1F914}', label: 'Reflective' },
+];
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatHeaderDate(): string {
+  return new Date()
+    .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    .toUpperCase();
+}
+
+function CalendarIcon({ active }: { active: boolean }) {
+  const color = active ? 'var(--today-accent)' : 'var(--today-muted)';
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <rect x="3" y="5" width="18" height="16" rx="3" />
+      <path d="M8 3v4M16 3v4M3 10h18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrendingIcon({ active }: { active: boolean }) {
+  const color = active ? 'var(--today-accent)' : 'var(--today-muted)';
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <path d="M3 17l6-6 4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 7h6v6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export default function TodayScreen() {
+  const [entries, setEntries] = useState<EntryItem[]>([]);
   const [beliefs, setBeliefs] = useState<BeliefItem[]>([]);
-  const [summary, setSummary] = useState({ memory_count: 0, belief_count: 0, phase: 'founder pilot' });
-  const [form, setForm] = useState(initialForm);
-  const [query, setQuery] = useState('');
-  const [reflection, setReflection] = useState<{ topic: string; insight: string; evidence: string[]; confidence: number } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<Tab>('today');
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerMood, setComposerMood] = useState(MOOD_OPTIONS[0]);
+  const [composerText, setComposerText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const headerDate = useMemo(() => formatHeaderDate(), []);
 
   const fetchAll = async () => {
-    const [memoryResponse, beliefResponse, summaryResponse] = await Promise.all([
-      fetch('http://localhost:8000/api/v1/memories'),
+    const [entriesResponse, beliefsResponse] = await Promise.all([
+      fetch('http://localhost:8000/api/v1/entries'),
       fetch('http://localhost:8000/api/v1/beliefs'),
-      fetch('http://localhost:8000/api/v1/summary'),
     ]);
-
-    setMemories(await memoryResponse.json());
-    setBeliefs(await beliefResponse.json());
-    setSummary(await summaryResponse.json());
+    setEntries(await entriesResponse.json());
+    setBeliefs(await beliefsResponse.json());
   };
 
   useEffect(() => {
     fetchAll();
   }, []);
 
-  const visibleMemories = useMemo(() => {
-    if (!query.trim()) return memories;
-    return memories.filter((memory) => {
-      const text = `${memory.title} ${memory.summary}`.toLowerCase();
-      return text.includes(query.toLowerCase());
-    });
-  }, [memories, query]);
-
-  const handleSubmit = async (event: FormEvent) => {
+  const handleSaveEntry = async (event: FormEvent) => {
     event.preventDefault();
-    setLoading(true);
+    if (!composerText.trim()) return;
 
-    const payload = {
-      source: form.source,
-      content: form.content,
-      tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-    };
-
-    await fetch('http://localhost:8000/api/v1/captures', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    setForm(initialForm);
-    await fetchAll();
-    setLoading(false);
-  };
-
-  const handleReflection = async () => {
-    const response = await fetch('http://localhost:8000/api/v1/reflections?topic=privacy+and+identity');
-    setReflection(await response.json());
+    setSaving(true);
+    try {
+      await fetch('http://localhost:8000/api/v1/captures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'journal',
+          content: composerText,
+          tags: [],
+          mood_emoji: composerMood.emoji,
+          mood_label: composerMood.label,
+        }),
+      });
+      setComposerText('');
+      setComposerMood(MOOD_OPTIONS[0]);
+      setComposerOpen(false);
+      await fetchAll();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <main className="page-shell">
-      <section className="hero">
-        <span className="eyebrow">Founder pilot</span>
-        <div className="hero-top">
-          <h1>selfie.Me</h1>
-          <Link href="/" className="back-link">
-            ← New check-in
+    <div className="today-shell">
+      <div className="today-frame">
+        <header className="today-header">
+          <Link href="/" className="today-logo">
+            me
           </Link>
-        </div>
-        <p className="subtitle">
-          A privacy-first personal memory AI designed to preserve a person&apos;s memories,
-          beliefs, decisions, and evolving self over time.
-        </p>
-      </section>
+          <span className="today-date">{headerDate}</span>
+        </header>
 
-      <section className="dashboard-grid">
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Capture</h2>
-            <span>{summary.phase}</span>
-          </div>
-
-          <form onSubmit={handleSubmit} className="capture-form">
-            <label>
-              Source
-              <select value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>
-                <option value="text">Text</option>
-                <option value="voice">Voice</option>
-                <option value="journal">Journal</option>
-                <option value="photo">Photo</option>
-              </select>
-            </label>
-
-            <label>
-              Memory content
-              <textarea
-                rows={6}
-                value={form.content}
-                onChange={(event) => setForm({ ...form, content: event.target.value })}
-                placeholder="What is happening, what are you thinking, and why does it matter?"
-                required
-              />
-            </label>
-
-            <label>
-              Tags
-              <input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
-            </label>
-
-            <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : 'Save capture'}
-            </button>
-          </form>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Memory overview</h2>
-            <span>{summary.memory_count} items</span>
-          </div>
-
-          <div className="metric-row">
-            <div className="metric">
-              <strong>{summary.memory_count}</strong>
-              <span>memories</span>
-            </div>
-            <div className="metric">
-              <strong>{summary.belief_count}</strong>
-              <span>beliefs</span>
-            </div>
-          </div>
-
-          <div className="search-wrap">
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search memories and reflections"
-            />
-          </div>
-
-          <div className="list-stack">
-            {visibleMemories.map((memory) => (
-              <article key={memory.id} className="memory-item">
-                <div className="memory-meta">
-                  <span className="pill">{memory.type}</span>
-                  <span>{new Date(memory.created_at).toLocaleDateString()}</span>
-                </div>
-                <h3>{memory.title}</h3>
-                <p>{memory.summary}</p>
-                {memory.tags && memory.tags.length > 0 && (
-                  <div className="tag-row">
-                    {memory.tags.map((tag) => (
-                      <span key={`${memory.id}-${tag}`} className="tag">#{tag}</span>
-                    ))}
+        <main className="today-body">
+          {tab === 'today' ? (
+            <div className="entry-stack">
+              {entries.length === 0 && (
+                <p className="today-empty">No entries yet. Tap + to add your first check-in.</p>
+              )}
+              {entries.map((entry) => (
+                <article key={entry.id} className="entry-card">
+                  <div className="entry-meta">
+                    <span className="entry-mood">
+                      <span className="entry-mood-emoji">{entry.mood_emoji}</span>
+                      {entry.mood_label}
+                    </span>
+                    <span className="entry-time">{formatRelativeTime(entry.created_at)}</span>
                   </div>
-                )}
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
+                  <p className="entry-content">{entry.content}</p>
 
-      <section className="bottom-grid">
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Belief evolution</h2>
-          </div>
-          <div className="belief-list">
-            {beliefs.map((belief) => (
-              <div key={belief.topic} className="belief-item">
-                <div className="belief-topline">
-                  <strong>{belief.topic}</strong>
-                  <span>{belief.status}</span>
-                </div>
-                <div className="confidence">Confidence: {(belief.confidence * 100).toFixed(0)}%</div>
-                <p>{belief.summary}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Reflection</h2>
-            <button type="button" className="secondary" onClick={handleReflection}>Generate</button>
-          </div>
-
-          {reflection ? (
-            <div className="reflection-box">
-              <p className="reflection-insight">{reflection.insight}</p>
-              <div className="confidence">Confidence: {(reflection.confidence * 100).toFixed(0)}%</div>
-              <ul>
-                {reflection.evidence.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+                  {entry.reflection && (
+                    <div className="reflection-card">
+                      <span className="reflection-label">Reflection</span>
+                      <p className="reflection-text">{entry.reflection}</p>
+                    </div>
+                  )}
+                </article>
+              ))}
             </div>
           ) : (
-            <p className="empty-state">No reflection generated yet.</p>
+            <div className="entry-stack">
+              {beliefs.map((belief) => (
+                <article key={belief.topic} className="entry-card">
+                  <div className="entry-meta">
+                    <span className="entry-mood">{belief.topic}</span>
+                    <span className="entry-time">{belief.status}</span>
+                  </div>
+                  <p className="entry-content">{belief.summary}</p>
+                  <div className="belief-confidence">
+                    Confidence: {(belief.confidence * 100).toFixed(0)}%
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
-        </div>
-      </section>
-    </main>
+        </main>
+
+        <button
+          type="button"
+          className="today-fab"
+          onClick={() => setComposerOpen(true)}
+          aria-label="Add a new entry"
+        >
+          +
+        </button>
+
+        <nav className="today-nav">
+          <button
+            type="button"
+            className={`today-nav-item ${tab === 'today' ? 'active' : ''}`}
+            onClick={() => setTab('today')}
+          >
+            <CalendarIcon active={tab === 'today'} />
+            <span>Today</span>
+          </button>
+          <button
+            type="button"
+            className={`today-nav-item ${tab === 'evolution' ? 'active' : ''}`}
+            onClick={() => setTab('evolution')}
+          >
+            <TrendingIcon active={tab === 'evolution'} />
+            <span>Evolution</span>
+          </button>
+        </nav>
+
+        {composerOpen && (
+          <div className="composer-backdrop" onClick={() => setComposerOpen(false)}>
+            <form
+              className="composer-sheet"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={handleSaveEntry}
+            >
+              <h2>New check-in</h2>
+
+              <div className="mood-picker">
+                {MOOD_OPTIONS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.label}
+                    className={`mood-chip ${composerMood.label === option.label ? 'active' : ''}`}
+                    onClick={() => setComposerMood(option)}
+                  >
+                    <span>{option.emoji}</span>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                className="composer-input"
+                rows={5}
+                value={composerText}
+                onChange={(event) => setComposerText(event.target.value)}
+                placeholder="What's going on?"
+                autoFocus
+              />
+
+              <div className="composer-actions">
+                <button type="submit" disabled={saving || !composerText.trim()}>
+                  {saving ? 'Saving...' : 'Save entry'}
+                </button>
+                <button type="button" className="secondary" onClick={() => setComposerOpen(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
