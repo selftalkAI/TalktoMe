@@ -12,3 +12,10 @@ observability-portal/.vercel/
 
 # OS
 .DS_Store
+
+# Local data storage — generated at runtime, never committed. See
+# orchestration-service/app/paths.py for what writes here.
+Storage/sql_storage/*
+!Storage/sql_storage/.gitkeep
+Storage/rag_storage/*
+!Storage/rag_storage/.gitkeep

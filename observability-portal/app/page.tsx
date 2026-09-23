@@ -2,6 +2,9 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
+import Login from './login';
+import Onboarding, { Profile } from './onboarding';
+import Welcome from './welcome';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -79,30 +82,31 @@ function computeStreak(moments: Moment[]): number {
 }
 
 function HomeIcon({ active }: { active: boolean }) {
+  const color = active ? '#1b4b3a' : '#a3a89e';
   return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path d="M3.5 11.5 12 4l8.5 7.5" stroke="#1d8cf0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M5.5 10.5V20h13v-9.5" fill="#1d8cf0" stroke="#1d8cf0" strokeWidth="2" strokeLinejoin="round" />
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M3.5 11.5 12 4l8.5 7.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M5.5 10.5V20h13v-9.5" fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" />
       <rect x="10" y="14" width="4" height="6" fill="#ffffff" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <path
         d="M3.5 11.5 12 4l8.5 7.5M5.5 10.5V20h13v-9.5"
-        stroke="#8a8d91"
+        stroke={color}
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect x="10" y="14" width="4" height="6" stroke="#8a8d91" strokeWidth="1.8" />
+      <rect x="10" y="14" width="4" height="6" stroke={color} strokeWidth="1.8" />
     </svg>
   );
 }
 
 function ChartIcon({ active }: { active: boolean }) {
-  const color = active ? '#1d8cf0' : '#8a8d91';
+  const color = active ? '#1b4b3a' : '#a3a89e';
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       {active ? (
         <>
           <rect x="4" y="12" width="4" height="8" rx="1" fill={color} />
@@ -120,10 +124,79 @@ function ChartIcon({ active }: { active: boolean }) {
   );
 }
 
+const SOURCE_META: Record<Source, { icon: string; label: string }> = {
+  text: { icon: '✍️', label: 'text' },
+  voice: { icon: '🎙️', label: 'voice' },
+  photo: { icon: '📷', label: 'photo' },
+};
+
 export default function HomePage() {
   const [tab, setTab] = useState<Tab>('today');
   const [composerOpen, setComposerOpen] = useState(false);
   const dragControls = useDragControls();
+
+  // The app always opens on login. Login either fetches an existing profile
+  // from the DB (Storage/sql_storage) or, for an unknown email, drops into
+  // onboarding pre-filled with that email so completing it saves a fetchable
+  // profile for next time.
+  const [screen, setScreen] = useState<'login' | 'onboarding' | 'welcome' | 'app'>('login');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  const handleLoggedIn = (existingProfile: Profile) => {
+    setProfile(existingProfile);
+    setScreen('welcome');
+  };
+
+  const handleNewProfile = (email: string) => {
+    setPendingEmail(email);
+    setScreen('onboarding');
+  };
+
+  const handleOnboardingComplete = async (newProfile: Profile) => {
+    const res = await fetch(`${API_BASE}/api/v1/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: newProfile.email,
+        full_name: newProfile.fullName,
+        dob: newProfile.dob || null,
+        location: newProfile.location || null,
+        interests: newProfile.interests,
+        other_interests: newProfile.otherInterests || null,
+        photo_data_url: newProfile.photoDataUrl,
+        quote: newProfile.quote || null,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.detail ?? 'Could not save this profile.');
+    }
+    setProfile(newProfile);
+    setScreen('welcome');
+  };
+
+  const handleWelcomeContinue = () => setScreen('app');
+
+  const handleStartWithSuggestion = (suggestion: string) => {
+    setContent(suggestion);
+    setComposerOpen(true);
+    setScreen('app');
+  };
+
+  const handleSkip = () => {
+    setProfile({
+      fullName: '',
+      email: '',
+      dob: '',
+      location: '',
+      interests: [],
+      otherInterests: '',
+      photoDataUrl: null,
+      quote: '',
+    });
+    setScreen('app');
+  };
 
   const [moments, setMoments] = useState<Moment[]>([]);
   const [source, setSource] = useState<Source>('text');
@@ -143,13 +216,14 @@ export default function HomePage() {
   const [narrativeLoading, setNarrativeLoading] = useState(false);
 
   const loadMoments = useCallback(async () => {
+    if (!profile?.email) return;
     try {
-      const res = await fetch(`${API_BASE}/api/v1/moments`);
+      const res = await fetch(`${API_BASE}/api/v1/moments?profile_email=${encodeURIComponent(profile.email)}`);
       if (res.ok) setMoments(await res.json());
     } catch {
       // Quiet fail here — errors surface when the person tries to save/reflect instead.
     }
-  }, []);
+  }, [profile?.email]);
 
   useEffect(() => {
     loadMoments();
@@ -176,14 +250,20 @@ export default function HomePage() {
     recognitionRef.current = recognition;
   }, []);
 
-  const loadEvolution = useCallback(async (days: number) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/evolution?days=${days}`);
-      if (res.ok) setStats(await res.json());
-    } catch {
-      setStats(null);
-    }
-  }, []);
+  const loadEvolution = useCallback(
+    async (days: number) => {
+      if (!profile?.email) return;
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/evolution?days=${days}&profile_email=${encodeURIComponent(profile.email)}`,
+        );
+        if (res.ok) setStats(await res.json());
+      } catch {
+        setStats(null);
+      }
+    },
+    [profile?.email],
+  );
 
   useEffect(() => {
     if (tab === 'evolution') {
@@ -230,6 +310,7 @@ export default function HomePage() {
   };
 
   const handleSave = async () => {
+    if (!profile?.email) return;
     if (!content.trim() && !photoDataUrl) return;
     setSaving(true);
     setError(null);
@@ -239,6 +320,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          profile_email: profile.email,
           source,
           content: content.trim() || '(photo only)',
           mood: null,
@@ -259,7 +341,10 @@ export default function HomePage() {
 
       setReflectingId(saved.id);
       try {
-        const reflectRes = await fetch(`${API_BASE}/api/v1/moments/${saved.id}/reflect`, { method: 'POST' });
+        const reflectRes = await fetch(
+          `${API_BASE}/api/v1/moments/${saved.id}/reflect?profile_email=${encodeURIComponent(profile.email)}`,
+          { method: 'POST' },
+        );
         const reflectData = await reflectRes.json();
         if (reflectRes.ok) {
           setMoments((prev) => prev.map((m) => (m.id === saved.id ? { ...m, reflection: reflectData.reflection } : m)));
@@ -275,9 +360,13 @@ export default function HomePage() {
   };
 
   const handleReflect = async (momentId: string) => {
+    if (!profile?.email) return;
     setReflectingId(momentId);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/moments/${momentId}/reflect`, { method: 'POST' });
+      const res = await fetch(
+        `${API_BASE}/api/v1/moments/${momentId}/reflect?profile_email=${encodeURIComponent(profile.email)}`,
+        { method: 'POST' },
+      );
       const data = await res.json();
       if (res.ok) {
         setMoments((prev) => prev.map((m) => (m.id === momentId ? { ...m, reflection: data.reflection } : m)));
@@ -288,9 +377,12 @@ export default function HomePage() {
   };
 
   const handleNarrative = async () => {
+    if (!profile?.email) return;
     setNarrativeLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/evolution/narrative?days=${evolutionDays}`);
+      const res = await fetch(
+        `${API_BASE}/api/v1/evolution/narrative?days=${evolutionDays}&profile_email=${encodeURIComponent(profile.email)}`,
+      );
       const data = await res.json();
       if (res.ok) setNarrative(data.narrative);
     } finally {
@@ -304,24 +396,63 @@ export default function HomePage() {
     [moments],
   );
 
+  if (screen === 'login') {
+    return (
+      <div className="app-shell">
+        <Login onLoggedIn={handleLoggedIn} onNewProfile={handleNewProfile} />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="app-shell">
+        <Onboarding initialEmail={pendingEmail} onComplete={handleOnboardingComplete} onSkip={handleSkip} />
+      </div>
+    );
+  }
+
+  if (screen === 'welcome') {
+    return (
+      <div className="app-shell">
+        <Welcome profile={profile} onContinue={handleWelcomeContinue} onStartWithSuggestion={handleStartWithSuggestion} />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
-        <span className="brand">me</span>
-        <AnimatePresence>
-          {streak > 0 && (
-            <motion.div
-              className="streak-badge"
-              title={`${streak}-day streak`}
-              initial={{ scale: 0, rotate: -20 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 14 }}
-            >
-              <span className="streak-flame">🔥</span>
-              <span>{streak}</span>
-            </motion.div>
+        <div>
+          <p className="greeting">
+            {greeting()}
+            {profile.fullName ? `, ${profile.fullName.split(' ')[0]}` : ''} 👋
+          </p>
+          <p className="greeting-sub">{hasToday ? 'Logged today' : 'Nothing logged yet today'}</p>
+        </div>
+        <div className="avatar">
+          {profile.photoDataUrl ? (
+            <img src={profile.photoDataUrl} alt="" className="avatar-photo" />
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="3.6" fill="#1b4b3a" />
+              <path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6" stroke="#1b4b3a" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+            </svg>
           )}
-        </AnimatePresence>
+          <AnimatePresence>
+            {streak > 0 && (
+              <motion.div
+                className="streak-badge"
+                title={`${streak}-day streak`}
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 14 }}
+              >
+                <span>🔥{streak}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </header>
 
       <main className="app-content">
@@ -336,10 +467,7 @@ export default function HomePage() {
               transition={{ duration: 0.18 }}
             >
               <motion.div className="prompt-bar" onClick={openComposer} whileTap={{ scale: 0.98 }}>
-                <p className="prompt-greeting">Hi you</p>
-                <div className="prompt-pill">
-                  <span>What&apos;s your thoughts</span>
-                </div>
+                <span className="prompt-pill">What&apos;s your thoughts?</span>
               </motion.div>
 
               {moments.length === 0 ? (
@@ -357,7 +485,9 @@ export default function HomePage() {
                       transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.04 }}
                     >
                       <div className="moment-top">
-                        {moment.mood && <span className="mood-pill">{moodLabel(moment.mood)}</span>}
+                        <span className={`source-badge ${moment.source}`}>
+                          {SOURCE_META[moment.source as Source]?.icon ?? '✍️'}
+                        </span>
                         <span className="moment-time">{timeAgo(moment.created_at)}</span>
                       </div>
                       {moment.photo_data_url && <img src={moment.photo_data_url} alt="" className="moment-photo" />}
@@ -491,30 +621,21 @@ export default function HomePage() {
         </AnimatePresence>
       </main>
 
-      <AnimatePresence>
-        {tab === 'today' && !composerOpen && (
-          <motion.button
-            type="button"
-            className="fab"
-            aria-label="Capture a moment"
-            onClick={openComposer}
-            initial={{ scale: 0, rotate: -45 }}
-            animate={{ scale: 1, rotate: 0 }}
-            exit={{ scale: 0, rotate: 45 }}
-            whileTap={{ scale: 0.88 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
       <nav className="tab-bar">
         <button type="button" aria-label="Today" className={tab === 'today' ? 'tab-bar-item active' : 'tab-bar-item'} onClick={() => setTab('today')}>
           <HomeIcon active={tab === 'today'} />
         </button>
+        <motion.button
+          type="button"
+          className="fab"
+          aria-label="Capture a moment"
+          onClick={openComposer}
+          whileTap={{ scale: 0.88 }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+        </motion.button>
         <button type="button" aria-label="Evolution" className={tab === 'evolution' ? 'tab-bar-item active' : 'tab-bar-item'} onClick={() => setTab('evolution')}>
           <ChartIcon active={tab === 'evolution'} />
         </button>
@@ -544,18 +665,12 @@ export default function HomePage() {
             </div>
 
             <header className="composer-header">
-              <button type="button" className="composer-cancel" onClick={closeComposer} disabled={saving}>
-                Cancel
+              <button type="button" className="composer-back" aria-label="Close" onClick={closeComposer} disabled={saving}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M15 5 8 12l7 7" stroke="#23271f" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
               <span className="composer-title">New moment</span>
-              <button
-                type="button"
-                className="composer-save"
-                disabled={saving || (!content.trim() && !photoDataUrl)}
-                onClick={handleSave}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
             </header>
 
             <div className="composer-body">
@@ -593,6 +708,18 @@ export default function HomePage() {
               )}
 
               {error && <p className="error-text">{error}</p>}
+            </div>
+
+            <div className="composer-footer">
+              <motion.button
+                type="button"
+                className="composer-save"
+                whileTap={{ scale: 0.97 }}
+                disabled={saving || (!content.trim() && !photoDataUrl)}
+                onClick={handleSave}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </motion.button>
             </div>
           </motion.div>
         )}

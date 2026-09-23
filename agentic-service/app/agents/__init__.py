@@ -3,11 +3,13 @@ from __future__ import annotations
 from .base import Agent
 from .calendar_agent import CalendarAgent
 from .email_digest_agent import EmailDigestAgent
+from .profile_agent import ProfileAgent
 from .smart_agent import SmartAgent
 
 _REGISTRY: dict[str, Agent] = {
     CalendarAgent.name: CalendarAgent(),
     EmailDigestAgent.name: EmailDigestAgent(),
+    ProfileAgent.name: ProfileAgent(),
     SmartAgent.name: SmartAgent(),
 }
 

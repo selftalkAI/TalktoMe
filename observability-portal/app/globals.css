@@ -1,19 +1,23 @@
 :root {
-  --accent: #1d8cf0;
-  --accent-dark: #0a6fd1;
-  --accent-soft: #eaf4fe;
-  --bg: #f5f6f8;
+  --accent: #1b4b3a;
+  --accent-dark: #123527;
+  --accent-soft: #e3efe9;
+  --bg: #faf7f2;
   --surface: #ffffff;
-  --border: #e7e9ec;
-  --text: #1c1e21;
-  --muted: #65676b;
-  --calm: #2fa84f;
-  --calm-soft: #eaf7ee;
-  --danger: #e0245e;
-  --header-h: 3.6rem;
-  --tab-bar-h: 3.8rem;
+  --border: #ece7de;
+  --text: #23271f;
+  --muted: #7a8079;
+  --peach: #fbeae0;
+  --peach-ink: #b5652e;
+  --sky: #e4eef8;
+  --sky-ink: #3a6ea8;
+  --lavender: #ece9fb;
+  --lavender-ink: #6d61c4;
+  --danger: #d1483f;
+  --card-shadow: 0 10px 24px -14px rgba(35, 39, 31, 0.28);
+  --header-h: 4.2rem;
+  --tab-bar-h: 4.6rem;
   --font: var(--font-ui), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-serif: var(--font-display), Georgia, serif;
 }
 
 * {
@@ -26,7 +30,7 @@ html, body {
   padding: 0;
   height: 100%;
   font-family: var(--font);
-  background: #e4e6e9;
+  background: #e9e4da;
   color: var(--text);
   overscroll-behavior: none;
 }
@@ -69,61 +73,85 @@ button {
   align-items: center;
   justify-content: space-between;
   height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
-  padding: env(safe-area-inset-top, 0px) 1.1rem 0;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(14px);
+  padding: env(safe-area-inset-top, 0px) 1.2rem 0;
+  background: var(--bg);
   z-index: 5;
 }
 
-.brand {
-  font-size: 1.1rem;
-  font-weight: 800;
+.greeting {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text);
+}
+
+.greeting-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent-soft);
   color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1rem;
+  flex: 0 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .streak-badge {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
   display: flex;
   align-items: center;
-  gap: 0.22rem;
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #c9741a;
-}
-
-.streak-flame {
-  font-size: 0.9rem;
+  gap: 0.1rem;
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--peach-ink);
+  box-shadow: 0 2px 6px rgba(35, 39, 31, 0.18);
 }
 
 .app-content {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 0.9rem 0.9rem calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 5.2rem);
+  padding: 0.3rem 1.1rem calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 1.5rem);
 }
 
-/* The top "Hi you / What's your thoughts" bar — Facebook's own composer-prompt
-   pattern: a friendly greeting sitting directly above a tappable input, so
-   starting an entry needs no separate button to notice or explain. */
+/* The tappable prompt card — styled like the reference's "Today's Focus"
+   accent card rather than a plain gray input, so starting an entry reads as
+   an invitation, not a form field. */
 .prompt-bar {
-  margin-bottom: 1.1rem;
+  background: var(--peach);
+  border-radius: 20px;
+  padding: 1.1rem 1.2rem;
+  margin-bottom: 1.3rem;
   cursor: pointer;
-}
-
-.prompt-greeting {
-  margin: 0 0 0.5rem;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1.7rem;
-  color: var(--text);
+  box-shadow: none;
 }
 
 .prompt-pill {
-  background: #f0f2f5;
-  border-radius: 999px;
-  padding: 0.75rem 1rem;
-  color: var(--muted);
-  font-size: 0.95rem;
+  color: var(--peach-ink);
+  font-weight: 600;
+  font-size: 1rem;
 }
 
 .empty-state {
@@ -154,44 +182,47 @@ button {
 
 .feed {
   display: grid;
-  gap: 0;
+  gap: 0.7rem;
 }
 
 .moment-card {
   background: var(--surface);
-  border-radius: 12px;
-  padding: 0.95rem 0 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.moment-card:last-child {
-  border-bottom: none;
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  box-shadow: none;
 }
 
 .moment-top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.55rem;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
 }
 
-.mood-pill {
-  background: var(--accent-soft);
-  color: var(--accent-dark);
-  border-radius: 999px;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.78rem;
-  font-weight: 600;
+.source-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex: 0 0 auto;
 }
+
+.source-badge.text { background: var(--sky); }
+.source-badge.voice { background: var(--lavender); }
+.source-badge.photo { background: var(--peach); }
 
 .moment-time {
   font-size: 0.76rem;
   color: var(--muted);
+  margin-left: auto;
 }
 
 .moment-photo {
   width: 100%;
-  border-radius: 12px;
+  border-radius: 14px;
   margin-bottom: 0.65rem;
   max-height: 300px;
   object-fit: cover;
@@ -205,13 +236,13 @@ button {
 }
 
 .reflect-btn {
-  border: 1.5px solid var(--accent);
-  background: transparent;
+  border: none;
+  background: var(--accent-soft);
   color: var(--accent);
   border-radius: 999px;
-  padding: 0.45rem 0.95rem;
+  padding: 0.5rem 1rem;
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -237,14 +268,12 @@ button {
   50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* Reflection shown as a message bubble — a deliberate framing choice: it
-   reads as something being said back to you, not another block of body
-   copy, which is what makes it the memorable "peak" of the entry. */
+/* Reflection shown as a quote-style accent block — the memorable "peak" of
+   the entry, set apart from the plain content above it. */
 .reflection-bubble {
-  background: var(--calm-soft);
+  background: var(--accent-soft);
   border-radius: 14px;
-  border-top-left-radius: 4px;
-  padding: 0.75rem 0.9rem;
+  padding: 0.8rem 0.95rem;
   margin-top: 0.3rem;
 }
 
@@ -252,16 +281,14 @@ button {
   margin: 0;
   line-height: 1.55;
   font-size: 0.92rem;
-  color: var(--text);
+  color: var(--accent-dark);
 }
 
 /* Evolution tab */
 .evolution h1 {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1.5rem;
-  margin: 0.2rem 0 1rem;
+  font-weight: 800;
+  font-size: 1.4rem;
+  margin: 0.6rem 0 1rem;
 }
 
 .range-row {
@@ -280,13 +307,14 @@ button {
 .range-chip {
   flex: 0 0 auto;
   border: none;
-  background: #f0f2f5;
+  background: var(--surface);
   color: var(--text);
   border-radius: 999px;
-  padding: 0.42rem 0.85rem;
+  padding: 0.42rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--card-shadow);
 }
 
 .range-chip.selected {
@@ -299,9 +327,11 @@ button {
 .stat-row {
   display: flex;
   align-items: center;
-  padding: 0.6rem 0 1.2rem;
-  margin-bottom: 0.4rem;
-  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 1rem 0;
+  margin-bottom: 1.2rem;
+  box-shadow: var(--card-shadow);
 }
 
 .stat {
@@ -315,7 +345,7 @@ button {
 .stat strong {
   font-size: 1.35rem;
   font-weight: 800;
-  color: var(--text);
+  color: var(--accent);
 }
 
 .stat span {
@@ -333,6 +363,10 @@ button {
   display: grid;
   gap: 0.6rem;
   margin-bottom: 1.4rem;
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 1.1rem;
+  box-shadow: var(--card-shadow);
 }
 
 .mood-bar-row {
@@ -367,8 +401,8 @@ button {
   border: none;
   background: var(--accent);
   color: #fff;
-  border-radius: 14px;
-  padding: 0.85rem;
+  border-radius: 999px;
+  padding: 0.9rem;
   font-size: 0.92rem;
   font-weight: 700;
   cursor: pointer;
@@ -381,18 +415,16 @@ button {
 }
 
 .narrative-card {
-  background: var(--accent-soft);
-  border-radius: 14px;
-  padding: 1rem 1.1rem;
+  background: var(--peach);
+  border-radius: 16px;
+  padding: 1.1rem 1.2rem;
 }
 
 .narrative-card p {
   margin: 0;
-  font-family: var(--font-serif);
-  font-style: italic;
   line-height: 1.6;
-  font-size: 1rem;
-  color: var(--text);
+  font-size: 0.95rem;
+  color: var(--peach-ink);
 }
 
 .hint {
@@ -401,40 +433,20 @@ button {
   margin: 0.4rem 0 0;
 }
 
-/* Floating action button — the single, always-reachable way to start an
-   entry (Fogg's "ability" lever: one obvious, low-friction trigger). */
-.fab {
-  position: absolute;
-  right: 1.1rem;
-  bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 0.9rem);
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: none;
-  background: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 22px -6px rgba(29, 140, 240, 0.55);
-  cursor: pointer;
-  z-index: 15;
-}
-
-.fab:active {
-  transform: scale(0.94);
-}
-
-/* Bottom tab bar */
+/* Bottom nav with an embedded, raised FAB in the center — the reference's
+   own nav shape. One always-reachable trigger to start an entry (Fogg's
+   "ability" lever), flanked by the two tabs. */
 .tab-bar {
   flex: 0 0 auto;
   position: relative;
   z-index: 10;
   display: flex;
+  align-items: center;
   height: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border);
+  padding: 0 1.4rem env(safe-area-inset-bottom, 0px);
+  background: var(--surface);
+  border-radius: 26px 26px 0 0;
+  box-shadow: 0 -6px 20px -12px rgba(35, 39, 31, 0.25);
 }
 
 .tab-bar-item {
@@ -443,27 +455,36 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 600;
   cursor: pointer;
+  padding: 0.4rem;
 }
 
 .tab-bar-item.active {
   color: var(--accent);
 }
 
-/* Composer — full-screen sheet, the same "new post" pattern used by every
-   major social app: minimal fields, disabled Save until valid (Hick's Law +
-   error prevention), single obvious exit. */
-@keyframes sheet-up {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+.fab {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+  margin: 0 0.6rem;
+  margin-top: -1.6rem;
+  border-radius: 50%;
+  border: 4px solid var(--bg);
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 20px -6px rgba(27, 75, 58, 0.55);
+  cursor: pointer;
 }
 
+/* Composer — full-screen sheet. Back chevron + title up top, a sticky
+   full-width pill Save button at the bottom (the reference's "Save Task"
+   pattern) instead of a small text button buried in the header. */
 .composer-sheet {
   position: absolute;
   inset: 0;
@@ -471,7 +492,6 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .sheet-grabber-row {
@@ -493,56 +513,73 @@ button {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.4rem 1rem 0.9rem;
+  gap: 0.7rem;
+  padding: 0.3rem 1.2rem 1rem;
+}
+
+.composer-back {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+}
+
+.composer-back:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .composer-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-}
-
-.composer-cancel,
-.composer-save {
-  border: none;
-  background: transparent;
-  font-size: 0.95rem;
-  cursor: pointer;
-  padding: 0.2rem;
-}
-
-.composer-cancel {
-  color: var(--muted);
-}
-
-.composer-save {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.composer-save:disabled,
-.composer-cancel:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  font-size: 1.1rem;
+  font-weight: 800;
 }
 
 .composer-body {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 1.1rem 1rem calc(env(safe-area-inset-bottom, 0px) + 2rem);
+  padding: 0.2rem 1.2rem 1.5rem;
 }
 
-/* Segmented control — the standard iOS/mobile pattern for a small, fixed
-   set of mutually exclusive choices; keeps the decision cheap (Hick's Law). */
+.composer-footer {
+  flex: 0 0 auto;
+  padding: 0.8rem 1.2rem calc(env(safe-area-inset-bottom, 0px) + 1rem);
+}
+
+.composer-save {
+  width: 100%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  border-radius: 999px;
+  padding: 0.95rem;
+  cursor: pointer;
+}
+
+.composer-save:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Segmented control — the standard mobile pattern for a small, fixed set of
+   mutually exclusive choices; keeps the decision cheap (Hick's Law). */
 .segmented {
   display: flex;
-  background: #f0f2f5;
-  border-radius: 10px;
-  padding: 3px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 4px;
   margin-bottom: 1rem;
+  box-shadow: var(--card-shadow);
 }
 
 .segment {
@@ -552,28 +589,28 @@ button {
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 0.5rem 0;
-  border-radius: 8px;
+  padding: 0.55rem 0;
+  border-radius: 9px;
   cursor: pointer;
 }
 
 .segment.selected {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 textarea {
   width: 100%;
-  background: #f0f2f5;
+  background: var(--surface);
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   color: var(--text);
-  padding: 0.9rem 1rem;
+  padding: 0.95rem 1.05rem;
   font-size: 1rem;
   line-height: 1.55;
   resize: vertical;
   margin-bottom: 0.9rem;
+  box-shadow: var(--card-shadow);
 }
 
 textarea:focus,
@@ -589,17 +626,17 @@ button:focus-visible {
 
 .record-btn {
   border: none;
-  background: #f0f2f5;
+  background: var(--surface);
   color: var(--text);
   border-radius: 999px;
-  padding: 0.6rem 1rem;
+  padding: 0.65rem 1.05rem;
   cursor: pointer;
   font-size: 0.88rem;
+  box-shadow: var(--card-shadow);
 }
 
 .record-btn.recording {
-  background: #fdeceb;
-  border-color: var(--danger);
+  background: #fbe4e1;
   color: var(--danger);
 }
 
@@ -607,8 +644,7 @@ button:focus-visible {
   display: block;
   margin-top: 0.7rem;
   max-width: 200px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
+  border-radius: 14px;
 }
 
 .error-text {
@@ -621,4 +657,524 @@ button:focus-visible {
   .mood-bar-row {
     grid-template-columns: 78px 1fr 20px;
   }
+}
+
+/* Onboarding / account setup — faithfully matches the approved reference:
+   outlined form fields (deliberately boxed, unlike the rest of the app,
+   since a form benefits from visible field boundaries), a 3-segment step
+   progress bar, and full-width pill CTAs. */
+.onboarding-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.onboarding-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.9rem) 1.2rem 0.6rem;
+}
+
+.onboarding-back {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.onboarding-back:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.progress-track {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.progress-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.progress-seg.filled {
+  background: var(--accent);
+}
+
+.onboarding-skip {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.onboarding-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.4rem 1.2rem calc(env(safe-area-inset-bottom, 0px) + 2rem);
+}
+
+.login-body {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 2.4rem);
+}
+
+.welcome-body {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 3rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+}
+
+.welcome-loading {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.welcome-message {
+  margin: 0 0 1.4rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.welcome-followup {
+  font-size: 1.05rem;
+}
+
+.welcome-response {
+  width: 100%;
+  background: var(--surface);
+  border: none;
+  border-radius: 16px;
+  color: var(--text);
+  padding: 0.95rem 1.05rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  resize: vertical;
+  margin-bottom: 0.9rem;
+  box-shadow: 0 10px 24px -14px rgba(35, 39, 31, 0.28);
+}
+
+.welcome-response:disabled {
+  opacity: 0.6;
+}
+
+.suggestion-card {
+  background: var(--peach);
+  border-radius: 18px;
+  padding: 1.1rem 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.suggestion-label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--peach-ink);
+  margin-bottom: 0.4rem;
+}
+
+.suggestion-card p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.welcome-skip {
+  display: block;
+  width: 100%;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.9rem;
+  cursor: pointer;
+}
+
+.known-profiles {
+  margin-top: 1.8rem;
+}
+
+.known-profiles-label {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.known-profile-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border: none;
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.known-profile-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.known-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.known-profile-name {
+  display: block;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.known-profile-email {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.onboarding-step {
+  margin: 0 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.onboarding-body h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.55rem;
+  font-weight: 800;
+}
+
+.onboarding-sub {
+  margin: 0 0 1.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.form-field {
+  display: block;
+  margin-bottom: 1.1rem;
+}
+
+.form-field span {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.form-field input {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-field-input {
+  position: relative;
+}
+
+.form-field-input input {
+  padding-right: 2.4rem;
+}
+
+.field-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--border);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.onboarding-continue {
+  width: 100%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  border-radius: 999px;
+  padding: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.onboarding-continue:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.privacy-note,
+.terms-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0.9rem 0 0;
+}
+
+.interest-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+
+.interest-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 0.9rem 0.4rem;
+  cursor: pointer;
+}
+
+.interest-card.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.interest-icon {
+  font-size: 1.3rem;
+}
+
+.interest-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.interest-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-upload-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.3rem;
+}
+
+.photo-upload-circle-wrap {
+  position: relative;
+  margin-bottom: 0.7rem;
+}
+
+.photo-remove {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.95rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.photo-upload-circle {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.photo-upload-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-upload-placeholder {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.photo-upload-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.profile-name {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.profile-location {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.quote-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--peach);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.quote-card input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--peach-ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.quote-card input:focus {
+  outline: none;
+}
+
+.quote-edit {
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.quote-card .field-clear {
+  position: static;
+  transform: none;
+  flex: 0 0 auto;
+  background: rgba(181, 101, 46, 0.15);
+  color: var(--peach-ink);
+}
+
+.profile-facts {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.profile-fact-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.fact-icon {
+  font-size: 1rem;
 }

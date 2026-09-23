@@ -1,17 +1,15 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 
-// next/font self-hosts and subsets these at build time — no runtime request to
-// Google Fonts, no layout shift. Inter carries the UI; Fraunces (a warm,
-// slightly editorial serif) is reserved for the greeting/headline moments so
-// the app has a distinct voice instead of reading as default system-ui.
-const inter = Inter({ subsets: ['latin'], variable: '--font-ui', display: 'swap' });
-const fraunces = Fraunces({
+// next/font self-hosts and subsets this at build time — no runtime request to
+// Google Fonts, no layout shift. A single rounded-geometric family (matching
+// the approved design reference) carries everything, headline weight for
+// greetings/titles and regular weight for body/UI.
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['500', '600'],
-  style: ['normal', 'italic'],
+  variable: '--font-ui',
+  weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
 });
 
@@ -30,12 +28,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: 'cover',
-  themeColor: '#f5f6f8',
+  themeColor: '#faf7f2',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
+    <html lang="en" className={jakarta.variable}>
       <body>{children}</body>
     </html>
   );
