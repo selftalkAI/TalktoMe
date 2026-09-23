@@ -91,6 +91,39 @@ CREATE TABLE IF NOT EXISTS rag_chunks (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_chunks(document_id);
+
+-- Trackable goals (US-004) — distinct from a free-text `memories` row of
+-- type='goal': this carries the progress-tracking fields (streak, nudge
+-- state) a durable memory record has no place for. A correction supersedes
+-- rather than mutates in place, same pattern as `memories.supersedes_id`.
+CREATE TABLE IF NOT EXISTS goals (
+    goal_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    title TEXT NOT NULL,
+    target_minutes INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'deleted')),
+    state TEXT NOT NULL DEFAULT 'on_track' CHECK (state IN ('on_track', 'renegotiation_offered', 'adjusted')),
+    current_streak_under_target INTEGER NOT NULL DEFAULT 0,
+    last_evaluated_date TEXT,
+    last_nudged_date TEXT,
+    pending_nudge_message TEXT,
+    pending_nudge_suggested_target INTEGER,
+    supersedes_goal_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_goals_profile_status ON goals(profile_email, status);
+
+-- Ground-truth adherence log for a goal — the LLM's grounding data (US-004);
+-- never inferred from conversation, always a deterministic write.
+CREATE TABLE IF NOT EXISTS goal_logs (
+    goal_id TEXT NOT NULL,
+    profile_email TEXT NOT NULL,
+    log_date TEXT NOT NULL,
+    actual_minutes INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (goal_id, log_date)
+);
 """
 
 

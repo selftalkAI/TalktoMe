@@ -339,18 +339,23 @@ export default function HomePage() {
       resetForm();
       setComposerOpen(false);
 
-      setReflectingId(saved.id);
-      try {
-        const reflectRes = await fetch(
-          `${API_BASE}/api/v1/moments/${saved.id}/reflect?profile_email=${encodeURIComponent(profile.email)}`,
-          { method: 'POST' },
-        );
-        const reflectData = await reflectRes.json();
-        if (reflectRes.ok) {
-          setMoments((prev) => prev.map((m) => (m.id === saved.id ? { ...m, reflection: reflectData.reflection } : m)));
+      // A moment that already came back with a reflection (a goal check-in that
+      // triggered a shortfall nudge — see goal_manager.consider_for_goals on the
+      // backend) keeps that reflection as-is; only the ordinary case reflects here.
+      if (!saved.reflection) {
+        setReflectingId(saved.id);
+        try {
+          const reflectRes = await fetch(
+            `${API_BASE}/api/v1/moments/${saved.id}/reflect?profile_email=${encodeURIComponent(profile.email)}`,
+            { method: 'POST' },
+          );
+          const reflectData = await reflectRes.json();
+          if (reflectRes.ok) {
+            setMoments((prev) => prev.map((m) => (m.id === saved.id ? { ...m, reflection: reflectData.reflection } : m)));
+          }
+        } finally {
+          setReflectingId(null);
         }
-      } finally {
-        setReflectingId(null);
       }
     } catch {
       setError('Could not reach the service. Is it running?');

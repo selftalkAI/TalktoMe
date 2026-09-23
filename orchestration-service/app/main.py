@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -8,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from . import goal_manager, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
 from .clients import AgenticServiceClient, AgenticServiceError
 from .config import settings
 
@@ -312,13 +313,27 @@ def create_moment(payload: MomentIn) -> MomentOut:
     )
     rag_store.index_moment(row['id'], row['content'], payload.profile_email)
     profile = profiles_repo.get_profile(payload.profile_email)
-    memory_manager.remember_from_text(
-        profile_email=payload.profile_email,
-        source_text=row['content'],
-        source_type='moment',
-        source_id=row['id'],
-        full_name=profile['full_name'] if profile else None,
-    )
+
+    # Memory extraction and goal-signal extraction are independent LLM calls
+    # over the same text — run them concurrently rather than adding a third
+    # sequential wait on top of the reflect call the frontend makes next.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        memory_future = executor.submit(
+            memory_manager.remember_from_text,
+            profile_email=payload.profile_email,
+            source_text=row['content'],
+            source_type='moment',
+            source_id=row['id'],
+            full_name=profile['full_name'] if profile else None,
+        )
+        goal_future = executor.submit(goal_manager.consider_for_goals, payload.profile_email, row['content'])
+        memory_future.result()
+        goal_reflection = goal_future.result()
+
+    if goal_reflection:
+        moments_repo.set_reflection(row['id'], payload.profile_email, goal_reflection)
+        row['reflection'] = goal_reflection
+
     return MomentOut(**row)
 
 

@@ -3,11 +3,13 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/orchestration-service" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/agentic-service/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/backend/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/orchestration-service/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
-    <orderEntry type="inheritedJdk" />
+    <orderEntry type="jdk" jdkName="~/WorkSpace/selfie-me/.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

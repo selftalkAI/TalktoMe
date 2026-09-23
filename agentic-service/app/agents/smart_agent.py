@@ -46,6 +46,10 @@ class SmartAgent:
             return self._suggest_next_step(step.args)
         if step.operation == 'extract_memories':
             return self._extract_memories(step.args)
+        if step.operation == 'goal_shortfall_response':
+            return self._goal_shortfall_response(step.args)
+        if step.operation == 'extract_goal_signal':
+            return self._extract_goal_signal(step.args)
         raise ValueError(f"SmartAgent does not support operation '{step.operation}'")
 
     def _reflect_moment(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -219,6 +223,114 @@ class SmartAgent:
             candidates = []
 
         return {'candidates': candidates}
+
+    def _goal_shortfall_response(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Composes a response to a sustained goal shortfall (US-004) that Orchestration's
+
+        `goal_tracker.py` has already deterministically detected — this method never
+        decides whether a shortfall exists, only how to talk about one it's handed.
+        Every number here (target, dates, streak) comes from the caller; the model
+        must never invent or round any of them, same grounding rule as
+        `_reflect_moment`.
+        """
+        title = payload.get('title', 'this goal')
+        target_minutes = payload.get('target_minutes')
+        streak = payload.get('streak')
+        logs: list[dict[str, Any]] = payload.get('logs', [])
+        log_lines = [f"- {log.get('log_date')}: {log.get('actual_minutes')} min" for log in logs]
+
+        system_prompt = (
+            "You are responding to ONE person about a goal they set that they have "
+            "consistently fallen short of. Everything you say must be grounded ONLY in "
+            "the exact goal, target, dates, and minutes given below — never invent, "
+            "round, or estimate a number, date, or streak length that isn't explicitly "
+            "given. Follow this order: first ask rather than lecture (what's getting in "
+            "the way, don't assume) and suggest only the smallest workable next step; "
+            "then, separately, gently question whether the target itself — not the "
+            "person — is the problem (a smaller, more consistent target beats a bigger "
+            "one they keep missing). Never be shaming or falsely upbeat. Respond with "
+            'strict JSON only, no markdown fencing, matching exactly this shape: '
+            '{"message": "...", "suggested_target_minutes": <int or null>}.\n'
+            "- message: 3-5 sentences, second person, following the order above.\n"
+            "- suggested_target_minutes: a smaller, more achievable daily target if one "
+            "is warranted (e.g. close to what they've actually been managing), or null "
+            "if you're only asking a question rather than proposing a specific number."
+        )
+        prompt = (
+            f'Goal: "{title}", target: {target_minutes} min/day\n'
+            f'Consecutive days under target: {streak}\n'
+            f'Logged sessions (oldest to newest):\n' + '\n'.join(log_lines)
+        )
+
+        provider = get_model_provider()
+        response = provider.chat([{'role': 'user', 'content': prompt}], system=system_prompt)
+
+        try:
+            parsed = json.loads(response)
+        except json.JSONDecodeError:
+            parsed = {'message': response.strip(), 'suggested_target_minutes': None}
+
+        suggested = parsed.get('suggested_target_minutes')
+        if not isinstance(suggested, int):
+            suggested = None
+
+        return {'message': parsed.get('message', ''), 'suggested_target_minutes': suggested}
+
+    def _extract_goal_signal(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Reads ONE piece of journal text and conservatively classifies whether it
+
+        contains a signal relevant to a duration-based daily goal (US-004) — this
+        only proposes a classification; the deterministic gate in Orchestration's
+        goal_manager.py decides what actually happens with it, same ADR-007 split
+        as `_extract_memories`.
+        """
+        source_text = (payload.get('source_text') or '').strip()
+        active_goal = payload.get('active_goal')
+        has_pending_nudge = bool(payload.get('has_pending_nudge'))
+
+        if not source_text:
+            return {'signal': 'none'}
+
+        if active_goal is None:
+            context = 'This person has no active tracked goal yet.'
+        else:
+            context = f'Their current tracked goal: "{active_goal["title"]}", target {active_goal["target_minutes"]} min/day.'
+            if has_pending_nudge:
+                context += ' They were just asked whether they\'d like to adjust this target to something smaller.'
+
+        system_prompt = (
+            'You read ONE thing this person just wrote in their own private journal and decide, '
+            'conservatively, whether it contains a signal relevant to a duration-based daily goal '
+            'you track for them (like "1 hour of gym every day"). Only fire a signal when it is '
+            "clearly and specifically about that goal — most journal entries are not, and 'none' is "
+            'the right answer far more often than not.\n'
+            f'{context}\n\n'
+            'Respond with strict JSON only, no markdown fencing, matching exactly this shape: '
+            '{"signal": "new_goal" | "session_log" | "adjustment" | "none", "title": "..." or null, '
+            '"target_minutes": <int> or null, "minutes": <int> or null}.\n'
+            '- new_goal: only if there is NO current goal and they clearly state a new duration-based '
+            'daily intention (e.g. "I want to do an hour of gym every day") — set title and '
+            "target_minutes (convert plain language like 'an hour' to 60, 'half an hour' to 30).\n"
+            '- session_log: only if there IS a current goal and they report actually doing that '
+            'activity today with a stated or clearly implied duration — set minutes.\n'
+            '- adjustment: only if they were just asked about adjusting the target and are now '
+            'accepting or proposing a new number — set target_minutes.\n'
+            '- none: anything else, including vague mentions with no number, unrelated content, or '
+            "normal reflection — never guess a number that wasn't stated or obviously implied."
+        )
+
+        provider = get_model_provider()
+        response = provider.chat([{'role': 'user', 'content': source_text}], system=system_prompt)
+
+        try:
+            parsed = json.loads(response)
+        except json.JSONDecodeError:
+            parsed = {'signal': 'none'}
+
+        if parsed.get('signal') not in ('new_goal', 'session_log', 'adjustment', 'none'):
+            parsed['signal'] = 'none'
+
+        return parsed
 
     @staticmethod
     def _narrative_focus_clause(payload: dict[str, Any]) -> str:
