@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import goal_manager, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from .brain2 import intentions_repo as brain2_intentions_repo
+from .brain2 import orchestrator as brain2
+from .brain2 import profile_store as brain2_profile_store
 from .clients import AgenticServiceClient, AgenticServiceError
 from .config import settings
 
@@ -653,3 +656,162 @@ def cancel_agent_run(run_id: str) -> dict[str, Any]:
         return client.cancel_agent_run(run_id)
     except AgenticServiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# --- Brain 2: intention / check-in / Profile endpoints -------------------
+# Brain 1 is the user (the `profile_email` on every call below). Brain 2 is
+# everything these endpoints front — one orchestrator, propose-never-write,
+# nothing durable changes to a Profile except through the accept endpoint.
+
+
+class Brain2IntentionIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    domain: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    target_minutes: int = Field(..., ge=0)
+
+
+class Brain2CheckinIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    minutes: int = Field(..., ge=0)
+    checkin_date: str | None = None
+    note: str | None = None
+
+
+class Brain2SupportIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+
+
+class Brain2RefineIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    support_message: str = Field(default='')
+    user_reflection: str = Field(..., min_length=1)
+
+
+class Brain2ReviseIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    additional_reflection: str = Field(..., min_length=1)
+    support_message: str = Field(default='')
+
+
+class Brain2ProposalActionIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+
+
+class Brain2AdjustIntentionIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    new_target_minutes: int = Field(..., ge=0)
+
+
+@app.post('/api/v1/brain2/intentions')
+def brain2_set_intention(payload: Brain2IntentionIn) -> dict[str, Any]:
+    """Brain 1 states an intention (e.g. 'Gym', 60 min/day) in a life domain."""
+    return brain2.set_intention(payload.profile_email, payload.domain, payload.title, payload.target_minutes)
+
+
+@app.post('/api/v1/brain2/intentions/{intention_id}/checkins')
+def brain2_log_checkin(intention_id: str, payload: Brain2CheckinIn) -> dict[str, Any]:
+    """Logs one day's ground truth against an intention and returns whether a
+
+    real shortfall pattern now exists — three+ consecutive days under target,
+    never a single bad day (`brain2/intentions_repo.SHORTFALL_STREAK_THRESHOLD`).
+    """
+    try:
+        return brain2.log_checkin(payload.profile_email, intention_id, payload.minutes, payload.checkin_date, payload.note)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post('/api/v1/brain2/intentions/{intention_id}/support')
+def brain2_offer_support(intention_id: str, payload: Brain2SupportIn) -> dict[str, Any]:
+    """Brain 2 notices the pattern already detected by the check-in endpoint
+
+    and drafts something to say — it never decides or acts, only offers.
+    """
+    intention = brain2_intentions_repo.get_intention(intention_id, payload.profile_email)
+    if intention is None:
+        raise HTTPException(status_code=404, detail=f'Unknown intention {intention_id}')
+    checkins = brain2_intentions_repo.list_checkins(intention_id, payload.profile_email)
+    streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
+    support = brain2.offer_support(payload.profile_email, intention, streak, checkins)
+    return {**support, 'streak': streak}
+
+
+@app.post('/api/v1/brain2/intentions/{intention_id}/profile-proposal')
+def brain2_propose_from_intention(intention_id: str, payload: Brain2RefineIn) -> dict[str, Any]:
+    """Drafts a Profile refinement from this intention's current shortfall and
+
+    what Brain 1 just said back — this writes nothing durable; the returned
+    entry has status='proposed' until an explicit accept call.
+    """
+    intention = brain2_intentions_repo.get_intention(intention_id, payload.profile_email)
+    if intention is None:
+        raise HTTPException(status_code=404, detail=f'Unknown intention {intention_id}')
+    checkins = brain2_intentions_repo.list_checkins(intention_id, payload.profile_email)
+    streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
+    return brain2.propose_refinement(
+        profile_email=payload.profile_email,
+        intention=intention,
+        streak=streak,
+        support_message=payload.support_message,
+        user_reflection=payload.user_reflection,
+    )
+
+
+@app.get('/api/v1/brain2/profile/{domain}')
+def brain2_get_profile(domain: str, profile_email: str = Query(..., min_length=3)) -> dict[str, Any]:
+    """Current accepted entry (if any) plus the full version history — nothing
+
+    in the history list is ever deleted, only superseded or rejected in place.
+    """
+    return {
+        'domain': domain,
+        'accepted': brain2_profile_store.get_accepted(profile_email, domain),
+        'history': brain2_profile_store.history(profile_email, domain),
+    }
+
+
+@app.post('/api/v1/brain2/profile/proposals/{proposal_id}/accept')
+def brain2_accept_proposal(proposal_id: str, payload: Brain2ProposalActionIn) -> dict[str, Any]:
+    """The only endpoint in this whole module that can make a Profile entry durable."""
+    try:
+        return brain2.accept_proposal(proposal_id, payload.profile_email)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post('/api/v1/brain2/profile/proposals/{proposal_id}/refine')
+def brain2_refine_proposal(proposal_id: str, payload: Brain2ReviseIn) -> dict[str, Any]:
+    """Brain 1 wants the draft reworked. Rejects this version (kept in history)
+
+    and drafts a new one incorporating the additional reflection.
+    """
+    entry = brain2_profile_store.get_entry(proposal_id, payload.profile_email)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f'Unknown proposal {proposal_id}')
+    intention = brain2_intentions_repo.get_active_intention(payload.profile_email, entry['domain'])
+    if intention is None:
+        raise HTTPException(status_code=404, detail=f"No active intention for domain '{entry['domain']}'")
+    checkins = brain2_intentions_repo.list_checkins(intention['intention_id'], payload.profile_email)
+    streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
+    return brain2.refine_proposal(proposal_id, payload.profile_email, payload.additional_reflection, streak, payload.support_message)
+
+
+@app.post('/api/v1/brain2/profile/proposals/{proposal_id}/reject')
+def brain2_reject_proposal(proposal_id: str, payload: Brain2ProposalActionIn) -> dict[str, Any]:
+    try:
+        return brain2.reject_proposal(proposal_id, payload.profile_email)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post('/api/v1/brain2/intentions/{intention_id}/adjust')
+def brain2_adjust_intention(intention_id: str, payload: Brain2AdjustIntentionIn) -> dict[str, Any]:
+    """Brain 1 accepted a smaller target — supersedes the old intention rather
+
+    than mutating it, so the original target stays visible in history.
+    """
+    try:
+        return brain2.adjust_intention(payload.profile_email, intention_id, payload.new_target_minutes)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

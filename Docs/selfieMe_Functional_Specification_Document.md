@@ -1,6 +1,6 @@
 # selfie.Me — Functional Specification Document (FSD)
 
-**Version:** V01 — Refined baseline (supersedes the original v0.1 draft)
+**Version:** V02 — Adds Profile/refinement requirements (FR-PROF-*) and flags Legacy/Future Generations access as an explicit non-goal pending a dedicated decision (supersedes V01)
 **Status:** Approved working baseline for founder pilot
 **Owners:** CEO/Founder (accountable), Head of Product (functional scope), Head of Security/DPO (privacy sections)
 
@@ -21,6 +21,14 @@
 - Tightened previously vague requirements into testable statements (e.g., FR-MEM-009 sensitivity handling now points to concrete tiers; FR-AGT-003 approval requirement now references the risk classes defined in `TDD §16.1`).
 - Converted every previously malformed table into valid markdown.
 - Moved the "interpretation guide" to the end of the document, matching the same structural fix applied to the ADD.
+
+### Changelog since V01 (V02)
+
+- Added §3.10, Profile and continuous refinement (`FR-PROF-*`) — the founder's "Brain 1/Brain 2" product narrative (`ADD §1.1`) required a functional home for a per-domain, versioned Profile that refines only with explicit user acceptance; this did not exist as a named capability in V01.
+- Added §5.6, Profile refinement journey (the "chopping technique" example), matching the structure of the other journeys in §5.
+- Added BR-013 and BR-014 to §6, extending the existing approval/disclosure discipline (BR-006, FR-AGT-003) to Profile writes and to the new World Knowledge lookup.
+- Added a guardrail metric to §10.3 for unaccepted Profile writes.
+- Added an explicit non-goal to §1.2: a second person (e.g. a family member) querying a user's Profile — including any posthumous "legacy" use — is out of scope for MVP and not authorized by any consent mechanism in this document (`ADD ADR-016`).
 
 ---
 
@@ -53,6 +61,7 @@ This FSD defines the functional behavior of selfie.Me v1/MVP: actors, capabiliti
 - Silent storage of highly sensitive (T3, `ADD §7.1`) information without an explicit product policy and user control.
 - Irreversible external actions without authorization.
 - Shared/household/team identity contexts (`ADD §22` — individual identity only for MVP).
+- A person other than the account owner querying the owner's Profile or memories, in any form — including a proposed "legacy" experience for family members, whether during the owner's life or posthumously. This is a real long-term product goal but requires a dedicated consent, authorization, and (for posthumous access) estate/legal framework that does not exist yet (`ADD ADR-016`); it must not be implemented as an extension of any existing sharing or export mechanism.
 
 ## 2. Actors and roles
 
@@ -181,6 +190,21 @@ This FSD defines the functional behavior of selfie.Me v1/MVP: actors, capabiliti
 | FR-FBK-003 | The system shall capture non-sensitive operational metrics for latency, errors, retrieval quality, and agent success. |
 | FR-FBK-004 | Model/prompt versions associated with an execution shall be traceable for evaluation. |
 
+### 3.10 Profile and continuous refinement (new — V02)
+
+| ID | Requirement |
+| --- | --- |
+| FR-PROF-001 | The system shall maintain a versioned Profile entry per domain (MVP domains: skill, emotion, learning, reading; extensible) synthesized from the user's active memories and beliefs in that domain (`ADD §6.1`). |
+| FR-PROF-002 | The system shall not synthesize or refine a Profile entry from content the user has not themselves reflected on — content merely relayed (e.g., an article, a video) requires the user's own added reflection before it may inform a Profile entry (`ADD §8.2` step 3). |
+| FR-PROF-003 | The system shall never write a new version of a Profile entry without the owning user's explicit, informed acceptance of that specific proposed change. |
+| FR-PROF-004 | The user shall be able to request further refinement of a proposed change before accepting or rejecting it. |
+| FR-PROF-005 | The system shall support periodic, automatic re-evaluation of an existing Profile entry against updated outside/expert knowledge for its domain, on a user-configurable or default cadence, without requiring the user to re-initiate the conversation. |
+| FR-PROF-006 | The user shall be able to view every prior version of a Profile entry, not only the current one. |
+| FR-PROF-007 | The user shall be able to disable automatic re-evaluation (FR-PROF-005) per domain or entirely. |
+| FR-PROF-008 | A Profile refinement proposal that draws on an external knowledge lookup shall disclose to the model/provider only the minimum content necessary for that domain's comparison — never the user's full memory or Profile context (`ADD §8.2` step 5, `ADD ADR-015`). |
+
+Profile requirements extend, rather than replace, the personal memory requirements in §3.3: a Profile entry is a synthesized view over governed memories, not an independent fact type, and remains subject to every applicable memory sensitivity and consent rule (§11.2).
+
 ## 4. Functional theory and behavioral interpretation
 
 The requirements in §3.1–§3.9 describe a controlled personal-context system, not a collection of screens or endpoints. The product must preserve the distinction between what the user said, what the system inferred, what the system currently believes, and what the assistant is allowed to do — the central functional principle behind every domain.
@@ -259,6 +283,16 @@ The requirements in §3.1–§3.9 describe a controlled personal-context system,
 3. The turn is excluded from ordinary memory-write eligibility.
 4. If the user explicitly asks the system to remember something from that conversation, the standard write-gate rules apply as usual — the exclusion is automatic-only, not a permanent block.
 
+### 5.6 Profile refinement (new — V02)
+
+1. User provides input about something in a tracked domain — e.g., describing (by text, audio, video, or photo) how they currently perform a skill.
+2. The system checks whether the input carries the user's own reflection, not just a raw description; if not, it asks a clarifying question before proceeding (`FR-PROF-002`).
+3. The system retrieves the current Profile entry for that domain, if one exists, and compares the input against relevant outside/expert knowledge.
+4. The system proposes a refinement — confirming the existing entry is already strong, or suggesting a specific improvement — and explains why.
+5. The user accepts, asks for further refinement, or rejects the proposal.
+6. On acceptance, the new version becomes the current Profile entry; the prior version remains visible in history (`FR-PROF-006`).
+7. On a regular cadence, the system may repeat steps 3–5 on its own for an existing entry, without new input from the user, unless the user has disabled this for that domain (`FR-PROF-005`, `FR-PROF-007`).
+
 ## 6. Business rules
 
 | Rule | Definition |
@@ -275,6 +309,8 @@ The requirements in §3.1–§3.9 describe a controlled personal-context system,
 | BR-010 | Account deletion overrides ordinary retention except for narrowly required security/legal records (§7.3). |
 | BR-011 (new) | A model provider integration is not permitted without a contractual no-training, bounded-retention commitment (`ADD ADR-012`). |
 | BR-012 (new) | Content primarily describing a named third party is never attributed as that third party's own governed memory (`FR-SAFE-007`). |
+| BR-013 (new) | A Profile entry (§3.10) is superseded only by the owning user's explicit acceptance of a specific proposed version; automatic or inferred acceptance is not permitted. |
+| BR-014 (new) | A World Knowledge lookup (`ADD §8.2` step 5) discloses only the minimum content necessary for the domain comparison and is subject to the same no-training/bounded-retention contractual bar as a model provider (`ADD ADR-012`, `ADD ADR-015`). |
 
 ## 7. Non-functional requirements
 
@@ -367,6 +403,7 @@ A functional spec without success criteria cannot be evaluated as a product. The
 | Contradiction safety (stale memory overriding fresh instruction) | < 1% on adversarial eval | Blocks the release that introduced the regression |
 | Unauthorized/duplicate agent actions | 0 tolerated | Blocks agent feature rollout until root-caused |
 | Privacy notice accuracy (`FR-PRV-009`) | 100% — no gap between claim and implementation | Immediate legal/DPO review, not a backlog item |
+| Profile writes without a recorded explicit acceptance event (`BR-013`) | 0 | Release-blocking; treated the same as an unauthorized agent action |
 
 Guardrails exist precisely because growth metrics create pressure to loosen exactly the controls this document spends most of its length defining. Any proposal to relax a guardrail requires CEO-level sign-off, not a product-manager-level decision.
 

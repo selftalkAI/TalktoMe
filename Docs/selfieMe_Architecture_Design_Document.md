@@ -1,6 +1,6 @@
 # selfie.Me — Architecture Design Document (ADD)
 
-**Version:** V01 — Refined baseline (supersedes the original v0.1 draft)
+**Version:** V02 — Adds the Brain 1/Brain 2 conceptual model, the Profile layer, World Knowledge and Scheduler components, and the profile refinement loop (supersedes V01)
 **Status:** Approved working baseline for founder pilot engineering
 **Owners:** CEO/Founder (accountable), Head of Engineering (architecture), Head of Security/DPO (privacy & security sections)
 
@@ -23,6 +23,15 @@
 - Converted every previously malformed table (broken pipe/markdown artifacts from the source document pack) into valid tables.
 - Converted the "Open Questions" section into founder decisions with recorded rationale (§22) — a small number of items remain genuinely open and are marked as such.
 
+### Changelog since V01 (V02)
+
+- Added §1.1 (Conceptual model: Brain 1 and Brain 2), explaining the product's own working metaphor for "user" and "system" and how it maps onto the planes and services already defined below — added because the founder's product narrative and the architecture vocabulary were starting to drift apart.
+- Added §6.1 (Profile layer), a synthesized, versioned, per-domain view over Memory and Belief (MVP domains: skill, emotion, learning, reading — extensible) — this sits on top of ADR-004's memory/belief split rather than replacing it.
+- Added §8.2 (Profile refinement loop) and its sequence, mirroring the existing Agent sequence (§8.1) but for profile writes: propose, never write, until the user accepts.
+- Added the World Knowledge and Scheduler components to the logical architecture (§4), trust boundaries (§9), and domain ownership (§25) — two new capabilities the Profile layer depends on that did not exist in V01.
+- Added ADR-013 through ADR-016, covering agent statelessness, the accept-before-supersede rule, World Knowledge provider terms, and the Legacy/Future Generations access question (flagged open, not decided).
+- Flagged Legacy/Future Generations access (a second person querying a user's Profile, potentially posthumously) as a major open product/legal question in §22 — it conflicts with the cross-user isolation invariant (§32.8) as written and must not be implemented by default.
+
 ---
 
 ## 1. Purpose and reading guide
@@ -30,6 +39,12 @@
 This document explains how selfie.Me is shaped and why its boundaries exist. It is not a promise that every logical component becomes a separate deployable service — it is a contract about responsibility, authority, data ownership, and trust boundaries that must hold regardless of physical deployment shape.
 
 Read it alongside `FSD` (what the product does) and `TDD` (how it is implemented). A change to a trust boundary, a canonical data owner, or a lifecycle guarantee in any one document requires an update to the other two (see `TDD §36`).
+
+### 1.1 Conceptual model: Brain 1 and Brain 2
+
+Internally, and in product conversations with the founder, selfie.Me is described using a working metaphor: **Brain 1** is the user — sovereign, biological, the only actor who ever decides or acts. **Brain 2** is selfie.Me itself — the whole system described in this document, from the client through every plane in §4. Brain 2 has memory (§6), reasoning (§8), and a voice (the Model Gateway's output), but no hands: every consequential thing it produces is either informational (a surfaced insight, a proposed refinement) or gated behind explicit user approval (§8.1, §8.2, `FSD FR-AGT-003`).
+
+This is not a new component — it is a naming lens over the User actor and the selfie.Me system already defined in §3–§4. The lens exists because it makes one invariant easy to state and easy to test: **nothing Brain 2 produces is written into durable personal context, or acted on externally, without Brain 1's explicit acceptance** (formalized as ADR-007 for agent actions and ADR-014 for profile writes). Where this document says "the system" or "the orchestrator," it means Brain 2; where it says "the user," it means Brain 1.
 
 ## 2. Architecture drivers
 
@@ -90,13 +105,13 @@ External AI & Third-Party Services
 | Plane | Components | Purpose |
 | --- | --- | --- |
 | Experience | Web/mobile clients, streaming gateway | User interaction and presentation. |
-| Intelligence | Orchestrator, model gateway, prompt registry, evaluators | Reasoning and model mediation. |
-| Personal context | Memory service, belief service, retrieval/index | Durable personalized understanding. |
+| Intelligence | Orchestrator, model gateway, prompt registry, evaluators, World Knowledge gateway (§6.1, §8.2) | Reasoning and model mediation. |
+| Personal context | Memory service, belief service, retrieval/index, Profile service (§6.1) | Durable personalized understanding. |
 | Decision | Decision service, evidence snapshotting | Structured decision support. |
 | Action | Agent runtime, tool registry, connector adapters | Authorized external execution. |
 | Governance | Identity, authorization, consent, policy, audit | Trust, privacy, and control. |
 | Data | PostgreSQL, vector index, object store, cache, event/queue | Persistence and asynchronous processing. |
-| Operations | Telemetry, feature flags, configuration, CI/CD | Reliability and safe evolution. |
+| Operations | Telemetry, feature flags, configuration, CI/CD, Scheduler (recurring Profile re-checks, §8.2) | Reliability and safe evolution. |
 
 Planes are conceptual boundaries that clarify dependency and authority even when the initial implementation runs in one process (`TDD §37.2`).
 
@@ -130,6 +145,20 @@ Four distinct layers, each with different retention, correction, visibility, and
 | Retrieval view | Ephemeral, task-scoped | No | "Three relevant preferences selected for drafting an email." |
 
 This separation prevents a generated interpretation from being mistaken for user truth. Evidence answers "where did this come from?"; memory answers "what durable statement may be reused?"; belief answers "what tentative pattern does the system currently infer?"; a retrieval view answers "what small, purpose-specific subset may this request see?" (rationale in §32.1).
+
+### 6.1 Profile layer (Brain 1's profile, new — V02)
+
+A fifth, higher-order view sits above the four layers in the table above: the **Profile** — a synthesized, durable, versioned understanding of the user (Brain 1, §1.1), organized by life domain rather than by individual memory. MVP domains: skill, emotion, learning, reading — the set is extensible per user, not fixed at four.
+
+| Property | Behavior |
+| --- | --- |
+| Composition | A Profile entry is synthesized from active memories and beliefs in its domain — it is not a new independent fact type and does not bypass ADR-004's memory/belief separation. |
+| Mutability | Versioned by supersession, identical to Memory (above, ADR-004): an accepted refinement creates a new version; the prior version is retained, never deleted. |
+| Refinement trigger | User-provided input in that domain, or a Scheduler-triggered periodic re-check (§8.2) — each produces a *proposal*, never a direct write. |
+| Write authority | Brain 2 may propose a refined Profile entry; only Brain 1's explicit acceptance supersedes the prior version (ADR-014) — the same authority pattern as agent approvals (§8, ADR-007), applied to profile writes instead of external actions. |
+| External grounding | A refinement proposal may draw on the World Knowledge component (§8.2) to compare the user's stated input against outside domain expertise — existing Memory/Belief processing (above, §14) only reasons over the user's own evidence and never does this. |
+
+The Profile is what a downstream personalization feature (e.g., a periodic skill or habit coaching surface) should read from — never a raw memory table scan — because it is the only layer that is both durable and pre-synthesized per domain.
 
 ## 7. Data classification and encryption posture
 
@@ -186,6 +215,22 @@ The Agentic Service implements this loop as a LangGraph `StateGraph`: Planner an
 8. Planner/Observer determines whether the next step is still valid.
 9. Run completes with an audit summary.
 
+### 8.2 Profile refinement loop (new — V02)
+
+A second, narrower sequence runs the Profile layer (§6.1). It reuses the Planner/Policy Gate/Executor/Observer roles above but never reaches the `CONSEQUENTIAL_WRITE`/`HIGH_IMPACT` risk classes, because its only possible write target is the user's own Profile, gated the same way regardless of risk class:
+
+1. Input arrives from Brain 1 (any modality), or the Scheduler (§4, Operations plane) triggers a re-check with no new input.
+2. Orchestrator classifies the domain and interprets the content (existing model-gateway/orchestrator responsibility — no new component).
+3. If the input lacks enough of the user's own reflection to be attributable to them (not just relayed external content), the orchestrator asks a clarifying question and the sequence pauses for a reply. This check has no equivalent in §8.1 and exists specifically so a Profile entry always reflects the user's own synthesis, not a passthrough of something they merely read or heard (`FSD FR-PROF-002`).
+4. Memory Service Recall (§6) fetches the current Profile entry for that domain, if any.
+5. World Knowledge (§4) is queried for the outside/expert benchmark relevant to that domain, subject to the same minimum-necessary-data and zero-retention contract terms as any external provider (ADR-012, extended by ADR-015).
+6. Orchestrator drafts a proposed refinement from (input + reflection + current Profile entry + benchmark).
+7. The proposal is presented to Brain 1 — this is a disclosure of a draft, not a write, and requires no policy-gate approval of its own because nothing has changed yet.
+8. Brain 1 responds: accept, request further refinement (loop to step 6), or reject.
+9. On accept, Memory Service writes a new Profile entry version that supersedes the prior one (§6.1); on reject, nothing is written.
+
+Every path through step 8 either produces a superseding version or produces nothing — there is no path where Brain 2 changes the Profile without an explicit accept (ADR-014).
+
 ## 9. Trust boundaries
 
 | Boundary | Trust assumption | Required controls |
@@ -196,6 +241,8 @@ The Agentic Service implements this loop as a LangGraph `StateGraph`: Planner an
 | Orchestrator ↔ LLM provider | Provider is an external processing boundary. | Minimum data, routing policy, zero-retention/no-training contract terms (§30.2), no secrets in prompts. |
 | Agent ↔ Connector | Third-party API is untrusted/external. | Scoped OAuth, schema validation, approvals, idempotency. |
 | Files/tool output ↔ Model | Content may contain adversarial instructions. | Content/instruction separation, sanitization, tool policy. |
+| Orchestrator ↔ World Knowledge provider (new) | Provider is an external processing boundary, same class as an LLM provider. | Minimum data, routing policy, zero-retention/no-training contract terms (§30.2, ADR-015), no secrets in prompts. |
+| Brain 1 ↔ Legacy Viewer — a second person, e.g. a family member (not implemented) | Not implemented in MVP; would require a new authorization model distinct from every other boundary in this table, since it deliberately allows a second natural person to read a user's Profile. | None defined yet — tracked as an open question (§22); must not be built as a silent extension of any existing boundary. |
 
 ## 10. Data architecture
 
@@ -220,6 +267,7 @@ PostgreSQL is the system of record for identities, memory metadata/content, beli
 - Model gateway supports provider/model fallback only for compatible, privacy-compatible tasks and records the substitution.
 - Backups are encrypted and restore procedures are tested quarterly at minimum.
 - Deletion tombstones prevent re-indexing deleted content from delayed events.
+- The Scheduler (§4) that triggers periodic Profile re-checks (§8.2) is itself a worker with durable job state — a missed or crashed run is retried on the next cycle, never silently dropped, and never treated as a reason to skip a user's explicit turn-based refinement request.
 
 ## 12. Security architecture
 
@@ -290,6 +338,10 @@ Each ADR states context, decision, and consequences so a future team can tell wh
 | ADR-010 | Three privacy gates: write, retrieval, disclosure. | Storage consent alone is insufficient for contextual use and external sharing. | Foundational; not expected to change. |
 | ADR-011 (new) | MVP uses server-side application encryption, not end-to-end encryption; on-device/confidential-compute path is a tracked roadmap item (§7.4). | Current LLM pipeline requires server-side plaintext; pretending otherwise is a governance and legal risk. | Revisit as soon as on-device embedding generation for T3 categories is feasible — this changes the privacy notice's claims, so legal/DPO sign-off is required before the marketing claim changes. |
 | ADR-012 (new) | Model providers must contractually agree to zero data retention / no training on request or response content. | Personal memory data must never become training data for a third party's foundation model. | If no provider offers acceptable terms at required latency/cost, escalate to CEO/board before shipping with a provider that does not meet this bar. |
+| ADR-013 (new, V02) | Brain 2 (the orchestrator/agent) holds no state of its own between turns; all durable state lives in the layers defined in §6/§6.1. | An LLM call is stateless by construction; treating the model itself as a source of truth would silently violate ADR-009 (provenance) the first time a session ended. | Foundational; not expected to change. |
+| ADR-014 (new, V02) | A Profile refinement proposal (§8.2) may never supersede an existing Profile entry without the owning user's explicit acceptance. | Mirrors ADR-007 for agent actions; without it, a Profile — designed to represent the user to themselves and, later, to their family — could silently drift from what the user actually believes about themselves. | Foundational; not expected to change. |
+| ADR-015 (new, V02) | World Knowledge provider calls are subject to the same zero-retention/no-training contractual bar as Model Gateway providers (ADR-012). | A domain-benchmark query can itself leak sensitive context (e.g., a query about discussing a family diagnosis reveals a T3-adjacent fact); it is not lower-risk than a model call merely because it looks like a search. | If no provider meets this bar for a given domain, that domain's refinement loop (§8.2) is disabled rather than shipped with a weaker contract. |
+| ADR-016 (new, V02) | Legacy/Future Generations access — allowing a person other than the account owner to query a user's Profile, potentially after the owner's death — is explicitly out of scope for MVP and is not authorized by any existing consent or authorization mechanism in this document. | This conflicts by design with the cross-user isolation invariant (§32.8, `FSD FR-ID-005`) unless a dedicated, separately reviewed authorization and (for posthumous access) estate/legal framework is built. Building it as an extension of an existing boundary would be a silent privacy regression. | Requires a dedicated ADR, DPO/legal review, and probably a new consent primitive before any implementation; tracked as an open founder decision in §22, not a design detail to improvise later. |
 
 ## 16. Deployment topology
 
@@ -371,6 +423,7 @@ Conversation content is retained 24 months on a rolling basis, then archived to 
 | Privacy and consent | `FSD FR-PRV-*` | Policy/Consent, deletion coordinator, secrets, KMS | Governance / Data |
 | Safety and grounding | `FSD FR-SAFE-*` | Policy, Model Gateway, retrieval controls | Intelligence / Governance |
 | Feedback and evaluation | `FSD FR-FBK-*` | Telemetry, evaluation pipeline | Operations |
+| Profile and refinement (new) | `FSD FR-PROF-*` | Profile Service (extends Memory Service), World Knowledge Gateway, Scheduler | Personal Context / Intelligence / Operations |
 
 ## 22. Founder decisions on prior open questions
 
@@ -393,6 +446,7 @@ v0.1 left ten open questions unresolved. A founder pilot cannot proceed with all
 
 - Pricing model and whether any tier gates memory capacity or agent connector count — needs willingness-to-pay research before deciding.
 - Whether decision-workspace outputs should ever be shareable with a third party (e.g., a partner co-deciding on an apartment) — this has real authorization-model implications and should not be decided casually.
+- Whether, and under what authorization and (if posthumous) estate/legal framework, a person other than the account owner (e.g., a family member) may ever query the owner's Profile. The product's own long-term vision includes this — described by the founder as letting a future generation ask "how did you solve this?" and receive an answer in the user's own voice — but it is not decided, not designed, and not authorized by anything in this document today (ADR-016). No implementation should treat this as implied.
 
 ## 23. Definition of done for documentation v1
 
@@ -435,7 +489,7 @@ Logical domains own their invariants even when they share one deployed applicati
 | --- | --- | --- |
 | Identity and governance | Users, sessions, consent, authorization, data classification | Authentication context, policy decisions, revocation events |
 | Conversation | Conversations, messages, response status | Interaction-completed events, response references |
-| Personal context | Memories, evidence links, beliefs, retrieval views | Memory mutation, contradiction, and index-work events |
+| Personal context | Memories, evidence links, beliefs, retrieval views, Profile entries and refinement proposals (§6.1) | Memory mutation, contradiction, index-work, and Profile-refinement events |
 | Decisions | Workspaces, criteria, options, snapshots, outcomes | Decision context requests and outcome feedback |
 | Agent action | Plans, steps, approvals, executions, connector results | Approval requests, action status, audit events |
 | Files and ingestion | Object references, parsing status, chunks, source metadata | Ingestion completion and deletion events |

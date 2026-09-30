@@ -43,7 +43,7 @@ def _compute_streak_under_target(logs: list[dict[str, Any]], target_minutes: int
     return streak
 
 
-def record_session(profile_email: str, goal_id: str, log_date: str, minutes: int) -> dict[str, Any]:
+def recsession(profile_email: str, goal_id: str, log_date: str, minutes: int) -> dict[str, Any]:
     """Writes one logged session and deterministically re-evaluates the goal's
 
     shortfall state. Never calls the model — this is the write-gate

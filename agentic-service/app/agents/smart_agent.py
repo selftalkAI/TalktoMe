@@ -50,6 +50,10 @@ class SmartAgent:
             return self._goal_shortfall_response(step.args)
         if step.operation == 'extract_goal_signal':
             return self._extract_goal_signal(step.args)
+        if step.operation == 'brain2_support_message':
+            return self._brain2_support_message(step.args)
+        if step.operation == 'brain2_profile_narrative':
+            return self._brain2_profile_narrative(step.args)
         raise ValueError(f"SmartAgent does not support operation '{step.operation}'")
 
     def _reflect_moment(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -331,6 +335,110 @@ class SmartAgent:
             parsed['signal'] = 'none'
 
         return parsed
+
+    def _brain2_support_message(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Brain 2's 'notice, suggest, and wait' moment for any domain of the
+
+        complete human persona (not just a fitness goal) — Orchestration's
+        `brain2/intentions_repo.shortfall_streak` has already deterministically
+        decided a shortfall exists; this method only composes how to talk about
+        one it's handed, and it must never decide, command, or judge. Every
+        number here (target, dates, streak) comes from the caller and must
+        never be invented, rounded, or estimated.
+        """
+        domain = payload.get('domain', 'this')
+        title = payload.get('title', 'this intention')
+        target_minutes = payload.get('target_minutes')
+        streak = payload.get('streak')
+        checkins: list[dict[str, Any]] = payload.get('checkins', [])
+        checkin_lines = [f"- {c.get('checkin_date')}: {c.get('actual_minutes')} min" for c in checkins]
+
+        system_prompt = (
+            "You are Brain 2 — a second brain that exists only to help, never to control. ONE "
+            "person set an intention in a domain of their life and has fallen short of it for "
+            "several days running. Everything you say must be grounded ONLY in the exact domain, "
+            "title, target, dates, and minutes given below — never invent, round, or estimate a "
+            "number you weren't given. You may NEVER command, instruct, or tell them what to do "
+            "next — you may only notice what happened, ask what got in the way (without assuming "
+            "an answer), and offer the smallest possible next step or a smaller target as a question, "
+            "not a directive. Never be shaming, falsely upbeat, or clinical. Respond with strict "
+            "JSON only, no markdown fencing, matching exactly this shape: "
+            '{"message": "...", "suggested_target_minutes": <int or null>}.\n'
+            "- message: 3-5 sentences, second person, notice -> ask -> offer, never command.\n"
+            "- suggested_target_minutes: a smaller, more achievable daily target if one is clearly "
+            "warranted (close to what they've actually been managing), or null if you're only "
+            "asking a question rather than proposing a specific number."
+        )
+        prompt = (
+            f'Domain: {domain}\n'
+            f'Intention: "{title}", target: {target_minutes} min/day\n'
+            f'Consecutive days under target: {streak}\n'
+            f'Logged check-ins (oldest to newest):\n' + '\n'.join(checkin_lines)
+        )
+
+        provider = get_model_provider()
+        response = provider.chat([{'role': 'user', 'content': prompt}], system=system_prompt)
+
+        try:
+            parsed = json.loads(response)
+        except json.JSONDecodeError:
+            parsed = {'message': response.strip(), 'suggested_target_minutes': None}
+
+        suggested = parsed.get('suggested_target_minutes')
+        if not isinstance(suggested, int):
+            suggested = None
+
+        return {'message': parsed.get('message', ''), 'suggested_target_minutes': suggested}
+
+    def _brain2_profile_narrative(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Drafts the Profile proposal itself — the 'brain strength' story: the
+
+        struggle, the support Brain 2 offered, and what Brain 1 actually said
+        back. This is a DRAFT, grounded only in what's given below; it is
+        Orchestration's job (never this method's) to hold it as `proposed`
+        until Brain 1 explicitly accepts it (ADR-014) — this method has no
+        opinion on acceptance and no path to write anything itself.
+        """
+        domain = payload.get('domain', 'this')
+        title = payload.get('title', 'this intention')
+        target_minutes = payload.get('target_minutes')
+        streak = payload.get('streak')
+        support_message = (payload.get('support_message') or '').strip()
+        user_reflection = (payload.get('user_reflection') or '').strip()
+        previous_entry = (payload.get('previous_entry_content') or '').strip()
+
+        system_prompt = (
+            "You are writing ONE short, durable entry for this person's own Profile in a "
+            "specific life domain — a synthesized account of a real moment of struggle and "
+            "growth, written so it could genuinely be read back to them, or one day to someone "
+            "who loves them, and still ring true. Ground it ONLY in what is given below: the "
+            "intention, the shortfall, the support offered, and — most importantly — what this "
+            "person actually said in their own words. Never invent a resolution, a feeling, or a "
+            "lesson they didn't actually express. If they didn't really resolve anything, say "
+            "that honestly rather than manufacturing a tidy arc. Write in second person ('you'), "
+            "3-5 sentences, as a standalone entry (not a reply to them). If a previous version of "
+            "this domain's Profile is given, treat this as building on it, not repeating it. "
+            "Respond with strict JSON only, no markdown fencing, matching exactly this shape: "
+            '{"content": "..."}.'
+        )
+        prompt = (
+            f'Domain: {domain}\n'
+            f'Intention: "{title}", target: {target_minutes} min/day\n'
+            f'Consecutive days under target when this came up: {streak}\n'
+            f"Brain 2's support offer: {support_message or '(none offered)'}\n"
+            f"What this person actually said: {user_reflection or '(nothing recorded)'}"
+            + (f'\n\nPrevious Profile entry for this domain:\n{previous_entry}' if previous_entry else '')
+        )
+
+        provider = get_model_provider()
+        response = provider.chat([{'role': 'user', 'content': prompt}], system=system_prompt)
+
+        try:
+            parsed = json.loads(response)
+        except json.JSONDecodeError:
+            parsed = {'content': response.strip()}
+
+        return {'content': parsed.get('content', '')}
 
     @staticmethod
     def _narrative_focus_clause(payload: dict[str, Any]) -> str:

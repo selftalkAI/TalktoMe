@@ -1,6 +1,6 @@
 # selfie.Me — Technical Design Document (TDD)
 
-**Version:** V01 — Refined baseline (supersedes the original v0.1 draft)
+**Version:** V02 — Adds the Profile Service, World Knowledge Gateway, Scheduler, and the profile refinement pipeline (supersedes V01)
 **Status:** Approved working baseline for founder pilot engineering
 **Owners:** Head of Engineering (accountable), Engineering leads per domain (`§4`), Head of Security/DPO (security/privacy sections)
 
@@ -21,6 +21,14 @@
 - Added §26, an on-call runbook example (vector index rebuild), and §27, a request-scoped example trace, since v0.1 asserted observability requirements without ever showing what one looks like end to end.
 - Converted every previously malformed table into valid markdown.
 - Moved the "interpretation guide" to the end, matching the structural fix applied to the other two documents.
+
+### Changelog since V01 (V02)
+
+- Added Profile Service to §3 and a `profile_entries` table sketch to §4/§21, implementing `FSD FR-PROF-*` and `ADD §6.1`.
+- Added World Knowledge Gateway to §3 and §20.1, mirroring the Model Gateway's provider-abstraction and zero-retention discipline (`ADD ADR-015`) for external domain-benchmark lookups.
+- Added §5.4, Profile refinement pipeline, implementing the ten-step call flow in `ADD §8.2`.
+- Added a `scheduler` job type to §22 for recurring Profile re-checks (`FSD FR-PROF-005`).
+- Added API endpoints for Profile read/refine/accept/reject to §9, and a security control-point row to §11 for World Knowledge queries.
 
 ---
 
@@ -63,6 +71,8 @@ Technology names are proposed choices, validated against team expertise, cost, d
 | File/Ingestion Service | Uploads, malware scanning, parsing, chunking, metadata, and embeddings. |
 | Notification Service | Task completion/approval notifications when enabled. |
 | Audit Service | Append-only security/product audit events with redaction. |
+| Profile Service (new) | Synthesizes versioned, per-domain Profile entries from Memory/Belief; runs the refinement loop (§5.4); enforces accept-before-supersede (`ADD ADR-014`). |
+| World Knowledge Gateway (new) | Provider-abstracted lookup of outside/expert domain benchmarks for Profile refinement; enforces minimum-necessary disclosure and zero-retention provider terms (`ADD ADR-015`). |
 
 ## 4. Core data model
 
@@ -85,6 +95,7 @@ Technology names are proposed choices, validated against team expertise, cost, d
 | Consent | `consent_id`, `user_id`, `scope`, `version`, `granted_at`, `revoked_at` |
 | ConnectorGrant | `grant_id`, `user_id`, `provider`, `scopes`, `encrypted_token_ref`, `status` |
 | AuditEvent | `event_id`, `principal_id`, `action`, `resource_type`, `resource_id`, `decision`, `metadata_redacted`, `created_at` |
+| ProfileEntry (new) | `profile_entry_id`, `user_id`, `domain`, `version`, `content`, `source_memory_ids`, `benchmark_ref`, `status` (`proposed`,`accepted`,`superseded`,`rejected`), `proposed_at`, `accepted_at`, `superseded_by` |
 
 A minimal executable DDL sketch is in §21 — v0.1 listed fields with no types or constraints, which is not directly implementable.
 
@@ -111,6 +122,24 @@ A candidate memory is a typed structured object, not free text. Minimum fields: 
 ### 5.3 Deduplication and supersession
 
 Exact identity uses stable normalized keys where possible. Semantic similarity may suggest duplicates but must not independently merge materially different facts. A new explicit statement that conflicts with an older time-sensitive memory normally supersedes the old memory while retaining history. A conflicting inference creates evidence against the belief rather than overwriting an explicit memory.
+
+### 5.4 Profile refinement pipeline (new — V02)
+
+Implements `ADD §8.2`. Unlike the memory write pipeline above, this pipeline can be triggered either by new user input or by the Scheduler (§22) with no new input at all — the only difference is what starts step 3.
+
+1. Input arrives (user, any modality) or the Scheduler enqueues a re-check job for an existing `ProfileEntry`.
+2. Orchestrator classifies the domain and interprets the content.
+3. Orchestrator evaluates whether the input reflects the user's own thinking, not just relayed content (`FSD FR-PROF-002`); if not, it emits a clarifying question and the pipeline suspends pending a reply.
+4. Profile Service reads the current `ProfileEntry` for that domain, if any (`status = accepted`).
+5. World Knowledge Gateway is queried for the domain's outside benchmark, passing only the minimum content needed (`FSD FR-PROF-008`).
+6. Orchestrator drafts a proposed `ProfileEntry` (`status = proposed`), referencing `source_memory_ids` and `benchmark_ref`.
+7. The proposal is returned to the user (no state change beyond `proposed`).
+8. On user response:
+   - **Accept** → the proposed row's status becomes `accepted`; the previous `accepted` row for that domain is set to `superseded` with `superseded_by` pointing at the new row — same supersession mechanics as memory (§5.3), never a destructive update.
+   - **Refine** → return to step 6 with the user's additional input.
+   - **Reject** → the proposed row's status becomes `rejected`; no `ProfileEntry` is superseded.
+
+Steps 4–7 are identical whether a human or the Scheduler started the run; this is what makes the recurring re-check (`FSD FR-PROF-005`) a thin wrapper around the same pipeline rather than a separate implementation.
 
 ## 6. Memory retrieval pipeline
 
@@ -194,6 +223,10 @@ Agent execution is a state machine: `CREATED → PLANNING → READY → RUNNING 
 | `DELETE /v1/consents/{scope}` | Revoke consent. |
 | `POST /v1/exports` | Create data export. |
 | `DELETE /v1/account` | Initiate account deletion. |
+| `GET /v1/profile/{domain}` | Get current accepted Profile entry and version history for a domain. |
+| `POST /v1/profile/{domain}/refine` | Submit input that starts or continues a refinement proposal for a domain (§5.4). |
+| `POST /v1/profile/proposals/{id}/accept` | Accept a proposed Profile entry; supersedes the prior version. |
+| `POST /v1/profile/proposals/{id}/reject` | Reject a proposed Profile entry; no supersession occurs. |
 
 ### 10.1 API conventions and rate limits (numbers added — undefined in v0.1)
 
@@ -220,6 +253,7 @@ Agent execution is a state machine: `CREATED → PLANNING → READY → RUNNING 
 | Model/provider data exposure | Minimum context, provider configuration, contractual/privacy review, routing policy (`ADD §30.2`). |
 | Account takeover | MFA-capable identity, session revocation, anomaly/rate controls. |
 | Deletion gaps | Data inventory, deletion orchestration, tombstones, verification jobs. |
+| World Knowledge query over-discloses personal context to an external provider (new) | Query construction is scoped to the minimum fields needed for the domain comparison, reviewed the same as any model-gateway prompt; provider contract requires zero retention/no training (`ADD ADR-015`). |
 
 ## 12. Privacy and retention implementation
 
@@ -302,6 +336,15 @@ The model gateway is the only application boundary allowed to invoke an external
 
 Provider fallback must be task-compatible and privacy-compatible (`ADD ADR-012`). A provider with different retention, region, or tool behavior is not a valid fallback merely because it is available.
 
+### 20.1 World Knowledge Gateway (new — V02)
+
+Mirrors the discipline above for a different purpose: looking up outside/expert domain knowledge rather than generating conversational output.
+
+1. Select a provider/source appropriate to the domain (e.g., a curated knowledge base, a general web-search provider, or a domain-specific reference) under the same region/retention/cost policy as step 1 above.
+2. Construct the query from only the fields the Profile refinement pipeline (§5.4) marks as necessary for comparison — never the raw user memory record.
+3. Enforce the same zero-retention/no-training contractual bar as any Model Gateway provider (`ADD ADR-012`, `ADD ADR-015`); a provider that cannot meet this disables refinement for that domain rather than shipping with a weaker term.
+4. Return a structured benchmark result (claim, source reference, confidence) for the orchestrator to reason over in §5.4 step 6 — never an unstructured blob passed directly into a user-facing response without attribution.
+
 ## 21. Minimal schema DDL sketch (new — v0.1 gave fields with no types)
 
 This is illustrative, not a migration file — actual migrations live in the codebase and are the source of truth. It exists so the data model in §4 is reviewable as something implementable.
@@ -358,6 +401,22 @@ create table agent_runs (
     completed_at timestamptz
 );
 create index idx_agent_runs_user_status on agent_runs (user_id, status);
+
+create table profile_entries (
+    profile_entry_id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(user_id),
+    domain text not null,
+    version int not null,
+    content text not null,
+    source_memory_ids uuid[] not null default '{}',
+    benchmark_ref text,
+    status text not null default 'proposed'
+        check (status in ('proposed','accepted','superseded','rejected')),
+    proposed_at timestamptz not null default now(),
+    accepted_at timestamptz,
+    superseded_by uuid references profile_entries(profile_entry_id)
+);
+create index idx_profile_entries_user_domain_status on profile_entries (user_id, domain, status);
 ```
 
 ## 22. Queue, worker, and workflow behavior
@@ -365,6 +424,8 @@ create index idx_agent_runs_user_status on agent_runs (user_id, status);
 Jobs declare a type, owner, attempt number, visibility timeout, maximum attempts, and deduplication key. Workers acknowledge a job only after its durable state transition succeeds. Dead-letter queues retain the reason, payload reference, and correlation ID while applying the same privacy controls as normal logs.
 
 Long-running agent and deletion workflows persist a checkpoint after each meaningful transition. Timers, approvals, retries, and compensation steps are represented as data so a worker restart cannot lose the workflow. Administrative replay requires an explicit operator action and must not bypass current authorization or deletion tombstones.
+
+A `scheduler` job type (new — V02) drives recurring Profile re-checks (`FSD FR-PROF-005`): one job per (`user_id`, `domain`) pair on a configurable cadence, enqueued by a time-based trigger rather than a user action. It carries the same type/owner/attempt/visibility-timeout/dedup-key contract as any other job above and enters the profile refinement pipeline at step 4 (§5.4) — it never bypasses the accept-before-supersede rule merely because no human initiated it.
 
 ## 23. File ingestion and untrusted content
 
