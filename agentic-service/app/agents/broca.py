@@ -6,6 +6,7 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
+from . import _shared
 from ._graph import run, single_node_graph
 
 
@@ -32,6 +33,7 @@ def _profile_narrative(payload: dict[str, Any]) -> dict[str, Any]:
     must be presented as outside information being offered, never folded in
     as if it were something Brain 1 already knew or said themselves.
     """
+    who_lines = _shared.profile_lines(payload)
     domain = payload.get('domain', 'this')
     title = payload.get('title')
     target_minutes = payload.get('target_minutes')
@@ -39,9 +41,11 @@ def _profile_narrative(payload: dict[str, Any]) -> dict[str, Any]:
     support_message = (payload.get('support_message') or '').strip()
     user_reflection = (payload.get('user_reflection') or '').strip()
     previous_entry = (payload.get('previous_entry_content') or '').strip()
-    pending_draft = (payload.get('pending_draft_content') or '').strip()
+    conversation_history = (payload.get('conversation_history') or '').strip()
     domain_memories: list[str] = payload.get('domain_memories') or []
     world_knowledge = (payload.get('world_knowledge') or '').strip()
+    checkin_mode = bool(payload.get('checkin_mode'))
+    escalation_level = int(payload.get('escalation_level') or 0)
 
     grounding_lines: list[str] = []
     if title:
@@ -70,29 +74,60 @@ def _profile_narrative(payload: dict[str, Any]) -> dict[str, Any]:
         "that might help:', 'worth knowing:'), never stated as if it were their own "
         "conclusion or something they already tried. It is a suggestion, not an "
         "instruction — never phrase it as telling them what to do.\n\n"
-        "Write in second person ('you'). HARD LIMIT: 2 sentences, under 40 words total — this "
-        "renders as one chat bubble, not a paragraph; if you're restating what they already "
-        "said, you've gone too long, cut it. Say the one thing that actually matters: the real "
-        "pattern or the one concrete idea, not both elaborated. If a previous version of this "
-        "domain's Profile is given, treat this as building on it, not repeating it.\n\n"
+        "Tone: warm and specific, like someone who actually knows this person and is on their "
+        "side — never clinical, curt, or scolding, and never a flat status report ('you have "
+        "not done X, your commitment is unclear'). If a profile is given below, use their first "
+        "name where it feels natural and let their actual context (age, location, interests, "
+        "their own quote) shape the voice, not just the domain facts. Being short is not an "
+        "excuse to be cold — a two-sentence message can still sound like it cares.\n\n"
+        "Write in second person ('you'). LIMIT: "
+        + ("3-4 short sentences, under 70 words total" if checkin_mode else "2-3 short sentences, under 55 words total")
+        + " — this renders as one chat bubble, not a paragraph; if you're restating what they "
+        "already said, you've gone too long, cut it. Say the one thing that actually matters: "
+        "the real pattern or the one concrete idea, not both elaborated. If a previous version "
+        "of this domain's Profile is given, treat this as building on it, not repeating it.\n\n"
         + (
-            "IMPORTANT — this is a follow-up: the draft below under 'Your last message (still "
-            "unanswered)' is something you already said, and the person hasn't accepted it or "
-            "replied to it yet. Do NOT repeat it or rephrase the same point. Either (a) briefly "
-            "check in — acknowledge you're still there, no pressure — or (b), if their latest "
-            "words below give you something new to go on, offer a genuinely DIFFERENT angle or "
-            "a better, more specific idea than last time.\n\n"
-            if pending_draft
+            "IMPORTANT — a conversation so far is given below. Ground your reply in the WHOLE "
+            "exchange, not just the latest line alone — if they just asked 'how do I do that?' "
+            "or similar, answer in relation to whatever YOU said earlier that they're reacting "
+            "to, don't treat their message as a standalone thought. If your own most recent "
+            "message in it hasn't been responded to with anything new, don't just repeat it — "
+            "build on it or offer a genuinely different, more specific angle.\n\n"
+            if conversation_history
+            else ""
+        )
+        + (
+            "CHECK-IN MODE — this message either (a) follows a real silence from them, or (b) "
+            "follows them saying they didn't/couldn't do it. Your job here is specifically to "
+            "re-engage, not to log a status update. Do THREE things, briefly, in order: "
+            "(1) using their actual profile below (age, health/fitness context, interests — only "
+            "what's actually given, never invented), name ONE concrete, specific reason reaching "
+            "this goal would genuinely matter to someone in their situation — a real benefit, not "
+            "generic encouragement; (2) if they said why it didn't happen, acknowledge that "
+            "specific reason, don't ignore it; (3) end with ONE direct, concrete question asking "
+            "exactly what they actually did (or will do) — the question is mandatory, this message "
+            "is incomplete without it.\n"
+            + (
+                f"This is attempt #{escalation_level + 1} to re-engage them — your last "
+                f"{escalation_level} message(s) on this got no response. Do NOT reuse the same "
+                "benefit, angle, or phrasing as before (check the conversation above for what "
+                "you already tried) — find a genuinely different, more specific, more compelling "
+                "angle this time. Repeating yourself is the one thing guaranteed not to work.\n\n"
+                if escalation_level > 0
+                else "\n"
+            )
+            if checkin_mode
             else ""
         )
         + 'Respond with strict JSON only, no markdown fencing, matching exactly this shape: {"content": "..."}.'
     )
     prompt = (
-        f'Domain: {domain}\n'
+        (('Who they are:\n' + '\n'.join(who_lines) + '\n\n') if who_lines else '')
+        + f'Domain: {domain}\n'
         + '\n'.join(grounding_lines)
-        + f"\nWhat this person actually said: {user_reflection or '(nothing recorded)'}"
+        + (f'\n\nConversation so far (oldest to newest):\n{conversation_history}' if conversation_history else '')
+        + f"\n\nWhat this person just said: {user_reflection or '(nothing recorded)'}"
         + (f'\n\nPrevious Profile entry for this domain:\n{previous_entry}' if previous_entry else '')
-        + (f'\n\nYour last message (still unanswered — do not repeat it):\n{pending_draft}' if pending_draft else '')
         + (f'\n\nOutside expert knowledge available to offer (optional, not required to use):\n{world_knowledge}' if world_knowledge else '')
     )
 

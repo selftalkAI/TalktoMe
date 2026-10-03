@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import memory_repo
+from .. import memory_repo, profiles_repo
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import intentions_repo, profile_store
 
@@ -57,6 +57,30 @@ def log_checkin(
     }
 
 
+def _profile_facts(profile_email: str) -> dict[str, Any]:
+    """Who Brain 1 actually is — name, age, location, interests, their own
+
+    chosen quote — the same facts Thalamus/Sensory Cortex/Prefrontal Cortex
+    already ground their language in (`main.py`'s `_profile_facts`). Amygdala
+    and Broca previously never received this at all, which is why their
+    output could read generic/cold instead of like it's actually talking to
+    this one person. Returns {} (not an error) if the profile can't be found
+    — language composition degrading to "less personalized" must never block
+    the support/proposal flow.
+    """
+    profile = profiles_repo.get_profile(profile_email)
+    if profile is None:
+        return {}
+    return {
+        'full_name': profile.get('full_name'),
+        'dob': profile.get('dob'),
+        'location': profile.get('location'),
+        'interests': profile.get('interests'),
+        'other_interests': profile.get('other_interests'),
+        'quote': profile.get('quote'),
+    }
+
+
 def offer_support(profile_email: str, intention: dict[str, Any], streak: int, checkins: list[dict[str, Any]]) -> dict[str, Any]:
     """Brain 2 notices, and asks — it never decides what Brain 1 should do.
 
@@ -64,6 +88,7 @@ def offer_support(profile_email: str, intention: dict[str, Any], streak: int, ch
     show Brain 1, not something recorded as fact about them.
     """
     payload = {
+        **_profile_facts(profile_email),
         'domain': intention['domain'],
         'title': intention['title'],
         'target_minutes': intention['target_minutes'],
@@ -93,7 +118,9 @@ def propose_refinement(
     streak: int | None = None,
     support_message: str = '',
     source_memory_ids: list[str] | None = None,
-    pending_draft_content: str | None = None,
+    conversation_history: str | None = None,
+    checkin_mode: bool = False,
+    escalation_level: int = 0,
 ) -> dict[str, Any]:
     """Drafts a Profile proposal for any domain — never writes it. Returns a
 
@@ -108,24 +135,36 @@ def propose_refinement(
       durable `memories` rows — the generic path any domain can use without
       needing an intention/checkin/streak concept of its own.
 
-    `pending_draft_content`, when given, is a PRIOR draft of this exact
-    conversation that is still sitting unanswered (status='proposed', not yet
-    accepted) — distinct from `previous_entry_content` below, which is the
-    last ACCEPTED version. Passing it tells Broca "you already said this and
-    nobody has responded yet" so it can deliberately check in or offer
-    something different rather than drifting into repeating itself.
+    `conversation_history`, when given, is the turn-by-turn transcript of
+    this exact back-and-forth so far (caller-built — this function has no
+    opinion on how far back it goes). Without it, `user_reflection` is the
+    ONLY thing Broca ever sees — it has no memory of its own prior message
+    or what the person was actually responding to, which makes a reply like
+    "how do I do that?" ungroundable. Distinct from `previous_entry_content`
+    below, which is only the last ACCEPTED Profile version, not the live
+    conversation.
+
+    `checkin_mode`, when True, tells Broca this draft exists specifically to
+    re-engage someone who's gone quiet or just said they didn't/couldn't do
+    it — not to log a status update. `escalation_level` (0-based) is how
+    many prior re-engagement attempts already got no response, so Broca can
+    deliberately avoid repeating its own earlier angle.
     """
     previous = profile_store.get_accepted(profile_email, domain)
     domain_memories = memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
 
     payload: dict[str, Any] = {
+        **_profile_facts(profile_email),
         'domain': domain,
         'user_reflection': user_reflection,
         'previous_entry_content': previous['content'] if previous else None,
         'domain_memories': [m['content'] for m in domain_memories],
     }
-    if pending_draft_content:
-        payload['pending_draft_content'] = pending_draft_content
+    if conversation_history:
+        payload['conversation_history'] = conversation_history
+    if checkin_mode:
+        payload['checkin_mode'] = True
+        payload['escalation_level'] = escalation_level
     if intention is not None:
         payload['title'] = intention['title']
         payload['target_minutes'] = intention['target_minutes']

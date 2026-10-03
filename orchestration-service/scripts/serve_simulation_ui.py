@@ -156,8 +156,8 @@ _INDEX_HTML = """<!doctype html>
   .bubble-row { display: flex; align-items: flex-end; gap: 8px; margin: 10px 0; }
   .bubble-row.b1 { justify-content: flex-start; }
   .bubble-row.b2 { justify-content: flex-end; }
-  .avatar { width: 30px; height: 30px; min-width: 30px; border-radius: 50%; display: flex; align-items: center;
-    justify-content: center; font-size: 16px; flex-shrink: 0; background: var(--panel); border: 1px solid #262a33; }
+  .avatar { width: 52px; height: 52px; min-width: 52px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 30px; flex-shrink: 0; background: var(--panel); border: 2px solid #262a33; }
   .avatar.brain1 { background: #2a3a5a; border-color: var(--b1); }
   .avatar.brain2 { background: #0f4a30; border-color: var(--b2); }
   .bubble { max-width: 72%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; }

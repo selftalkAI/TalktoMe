@@ -6,6 +6,7 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
+from . import _shared
 from ._graph import run, single_node_graph
 
 
@@ -29,6 +30,7 @@ def _support_message(payload: dict[str, Any]) -> dict[str, Any]:
     framed as a stepping stone back toward the original number, never a
     replacement for it.
     """
+    who_lines = _shared.profile_lines(payload)
     domain = payload.get('domain', 'this')
     title = payload.get('title', 'this intention')
     target_minutes = payload.get('target_minutes')
@@ -69,6 +71,10 @@ def _support_message(payload: dict[str, Any]) -> dict[str, Any]:
         "explicitly as a deliberate stepping stone BACK toward their original target — say so "
         "plainly, so it reads as a path to the real goal, not as giving up on it. Never be "
         "shaming, falsely upbeat, or clinical.\n\n"
+        "Tone: warm, like a companion who's actually paying attention to this one person — not "
+        "a progress-tracker reading out numbers at them. If a profile is given below, use their "
+        "first name where it feels natural and let their actual context shape the voice. Short "
+        "does not mean cold.\n\n"
         "Respond with strict JSON only, no markdown fencing, matching exactly this shape: "
         '{"message": "...", "suggested_target_minutes": <int or null>}.\n'
         "- message: HARD LIMIT 3 short sentences, under 55 words total — this renders as one "
@@ -79,7 +85,8 @@ def _support_message(payload: dict[str, Any]) -> dict[str, Any]:
         "temporary), or null if no target change is warranted."
     )
     prompt = (
-        f'Domain: {domain}\n'
+        (('Who they are:\n' + '\n'.join(who_lines) + '\n\n') if who_lines else '')
+        + f'Domain: {domain}\n'
         f'Intention: "{title}", target: {target_minutes} min/day\n'
         f'Consecutive days under target: {streak}\n'
         f'Logged check-ins, oldest to newest (what they actually did, and what they said about it):\n'
