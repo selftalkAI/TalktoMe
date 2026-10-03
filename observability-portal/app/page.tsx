@@ -7,6 +7,23 @@ import Onboarding, { Profile } from './onboarding';
 import Welcome from './welcome';
 
 const API_BASE = 'http://localhost:8000';
+// Only the email is persisted — never a password. On reload, it's used to
+// re-fetch the profile fresh from the server (GET /api/v1/profiles/{email}),
+// so what's in localStorage is a pointer, not a cached credential.
+const SESSION_EMAIL_KEY = 'selfieme_session_email';
+
+function rowToProfile(row: any): Profile {
+  return {
+    fullName: row.full_name,
+    email: row.email,
+    dob: row.dob ?? '',
+    location: row.location ?? '',
+    interests: row.interests ?? [],
+    otherInterests: row.other_interests ?? '',
+    photoDataUrl: row.photo_data_url ?? null,
+    quote: row.quote ?? '',
+  };
+}
 
 const MOODS = [
   { key: 'good', label: '😊 Good' },
@@ -18,7 +35,6 @@ const MOODS = [
 ];
 
 type Source = 'text' | 'voice' | 'photo';
-type Tab = 'today' | 'evolution';
 
 type Moment = {
   id: string;
@@ -28,15 +44,6 @@ type Moment = {
   mood: string | null;
   photo_data_url: string | null;
   reflection: string | null;
-};
-
-type EvolutionStats = {
-  range_days: number;
-  total_moments_all_time: number;
-  moments_in_range: number;
-  moments_today: number;
-  mood_counts_in_range: Record<string, number>;
-  has_history_before_range: boolean;
 };
 
 function timeAgo(iso: string): string {
@@ -49,11 +56,6 @@ function timeAgo(iso: string): string {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return `${days}d`;
-}
-
-function moodLabel(mood: string | null): string {
-  const found = MOODS.find((m) => m.key === mood);
-  return found ? found.label : mood ? mood : '';
 }
 
 function greeting(): string {
@@ -81,49 +83,6 @@ function computeStreak(moments: Moment[]): number {
   return streak;
 }
 
-function HomeIcon({ active }: { active: boolean }) {
-  const color = active ? '#1b4b3a' : '#a3a89e';
-  return active ? (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M3.5 11.5 12 4l8.5 7.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M5.5 10.5V20h13v-9.5" fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      <rect x="10" y="14" width="4" height="6" fill="#ffffff" />
-    </svg>
-  ) : (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M3.5 11.5 12 4l8.5 7.5M5.5 10.5V20h13v-9.5"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="10" y="14" width="4" height="6" stroke={color} strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function ChartIcon({ active }: { active: boolean }) {
-  const color = active ? '#1b4b3a' : '#a3a89e';
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      {active ? (
-        <>
-          <rect x="4" y="12" width="4" height="8" rx="1" fill={color} />
-          <rect x="10" y="8" width="4" height="12" rx="1" fill={color} />
-          <rect x="16" y="4" width="4" height="16" rx="1" fill={color} />
-        </>
-      ) : (
-        <>
-          <rect x="4" y="12" width="4" height="8" rx="1" stroke={color} strokeWidth="1.8" />
-          <rect x="10" y="8" width="4" height="12" rx="1" stroke={color} strokeWidth="1.8" />
-          <rect x="16" y="4" width="4" height="16" rx="1" stroke={color} strokeWidth="1.8" />
-        </>
-      )}
-    </svg>
-  );
-}
-
 const SOURCE_META: Record<Source, { icon: string; label: string }> = {
   text: { icon: '✍️', label: 'text' },
   voice: { icon: '🎙️', label: 'voice' },
@@ -131,25 +90,58 @@ const SOURCE_META: Record<Source, { icon: string; label: string }> = {
 };
 
 export default function HomePage() {
-  const [tab, setTab] = useState<Tab>('today');
   const [composerOpen, setComposerOpen] = useState(false);
   const dragControls = useDragControls();
 
-  // The app always opens on login. Login either fetches an existing profile
-  // from the DB (Storage/sql_storage) or, for an unknown email, drops into
-  // onboarding pre-filled with that email so completing it saves a fetchable
-  // profile for next time.
-  const [screen, setScreen] = useState<'login' | 'onboarding' | 'welcome' | 'app'>('login');
+  // The app always STARTS on login, but a reload shouldn't act like a fresh
+  // login — 'checking-session' covers the moment between mount and knowing
+  // whether a persisted session (SESSION_EMAIL_KEY) still resolves to a real
+  // profile, so a refresh doesn't flash the login screen before jumping
+  // straight back into the app.
+  const [screen, setScreen] = useState<'checking-session' | 'login' | 'onboarding' | 'welcome' | 'app'>(
+    'checking-session',
+  );
   const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingPassword, setPendingPassword] = useState('');
   const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    const savedEmail = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_EMAIL_KEY) : null;
+    if (!savedEmail) {
+      setScreen('login');
+      return;
+    }
+    fetch(`${API_BASE}/api/v1/profiles/${encodeURIComponent(savedEmail)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((row) => {
+        if (row) {
+          setProfile(rowToProfile(row));
+          setScreen('app');
+        } else {
+          window.localStorage.removeItem(SESSION_EMAIL_KEY);
+          setScreen('login');
+        }
+      })
+      .catch(() => setScreen('login'));
+  }, []);
+
+  const persistSession = (email: string) => {
+    try {
+      window.localStorage.setItem(SESSION_EMAIL_KEY, email);
+    } catch {
+      // Private browsing / storage disabled — session just won't survive a reload.
+    }
+  };
 
   const handleLoggedIn = (existingProfile: Profile) => {
     setProfile(existingProfile);
+    persistSession(existingProfile.email);
     setScreen('welcome');
   };
 
-  const handleNewProfile = (email: string) => {
+  const handleNewProfile = (email: string, password: string) => {
     setPendingEmail(email);
+    setPendingPassword(password);
     setScreen('onboarding');
   };
 
@@ -160,6 +152,7 @@ export default function HomePage() {
       body: JSON.stringify({
         email: newProfile.email,
         full_name: newProfile.fullName,
+        password: newProfile.password,
         dob: newProfile.dob || null,
         location: newProfile.location || null,
         interests: newProfile.interests,
@@ -172,7 +165,11 @@ export default function HomePage() {
       const data = await res.json().catch(() => null);
       throw new Error(data?.detail ?? 'Could not save this profile.');
     }
-    setProfile(newProfile);
+    // Never keep the plaintext password in app state past this call — it
+    // only ever existed to make this one request.
+    const { password: _password, ...profileWithoutPassword } = newProfile;
+    setProfile(profileWithoutPassword);
+    persistSession(profileWithoutPassword.email);
     setScreen('welcome');
   };
 
@@ -210,11 +207,6 @@ export default function HomePage() {
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
 
-  const [evolutionDays, setEvolutionDays] = useState(30);
-  const [stats, setStats] = useState<EvolutionStats | null>(null);
-  const [narrative, setNarrative] = useState<string | null>(null);
-  const [narrativeLoading, setNarrativeLoading] = useState(false);
-
   const loadMoments = useCallback(async () => {
     if (!profile?.email) return;
     try {
@@ -228,6 +220,106 @@ export default function HomePage() {
   useEffect(() => {
     loadMoments();
   }, [loadMoments]);
+
+  // Brain 2's Profile proposals (drafted by Broca, sometimes by the
+  // Scheduler with no input from you at all) — everything it's drafted and
+  // is waiting on you to accept, refine, or reject. Previously invisible:
+  // real work Brain 2 was doing into a void.
+  const [pendingProposals, setPendingProposals] = useState<any[]>([]);
+  const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
+
+  const loadPendingProposals = useCallback(async () => {
+    if (!profile?.email) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/brain2/pending?profile_email=${encodeURIComponent(profile.email)}`);
+      if (res.ok) setPendingProposals(await res.json());
+    } catch {
+      // Quiet fail — Brain 2's proposals are a bonus surface, never block the journal.
+    }
+  }, [profile?.email]);
+
+  useEffect(() => {
+    loadPendingProposals();
+  }, [loadPendingProposals]);
+
+  const acceptProposal = async (proposalId: string) => {
+    if (!profile?.email) return;
+    setProposalBusyId(proposalId);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/brain2/profile/proposals/${proposalId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_email: profile.email }),
+      });
+      if (res.ok) setPendingProposals((prev) => prev.filter((p) => p.profile_entry_id !== proposalId));
+    } finally {
+      setProposalBusyId(null);
+    }
+  };
+
+  const rejectProposal = async (proposalId: string) => {
+    if (!profile?.email) return;
+    setProposalBusyId(proposalId);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/brain2/profile/proposals/${proposalId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_email: profile.email }),
+      });
+      if (res.ok) setPendingProposals((prev) => prev.filter((p) => p.profile_entry_id !== proposalId));
+    } finally {
+      setProposalBusyId(null);
+    }
+  };
+
+  // Hippocampus's candidate memories sitting at requires_confirmation —
+  // proposed, not yet durable, until you say which ones are actually true.
+  const [pendingMemories, setPendingMemories] = useState<any[]>([]);
+  const [memoryBusyId, setMemoryBusyId] = useState<string | null>(null);
+
+  const loadPendingMemories = useCallback(async () => {
+    if (!profile?.email) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/memories?profile_email=${encodeURIComponent(profile.email)}&status=requires_confirmation`,
+      );
+      if (res.ok) setPendingMemories(await res.json());
+    } catch {
+      // Quiet fail — same bonus-surface contract as proposals.
+    }
+  }, [profile?.email]);
+
+  useEffect(() => {
+    loadPendingMemories();
+  }, [loadPendingMemories]);
+
+  const confirmMemory = async (memoryId: string) => {
+    if (!profile?.email) return;
+    setMemoryBusyId(memoryId);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/memories/${memoryId}/confirm?profile_email=${encodeURIComponent(profile.email)}`,
+        { method: 'PATCH' },
+      );
+      if (res.ok) setPendingMemories((prev) => prev.filter((m) => m.memory_id !== memoryId));
+    } finally {
+      setMemoryBusyId(null);
+    }
+  };
+
+  const suppressMemory = async (memoryId: string) => {
+    if (!profile?.email) return;
+    setMemoryBusyId(memoryId);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/memories/${memoryId}/suppress?profile_email=${encodeURIComponent(profile.email)}`,
+        { method: 'PATCH' },
+      );
+      if (res.ok) setPendingMemories((prev) => prev.filter((m) => m.memory_id !== memoryId));
+    } finally {
+      setMemoryBusyId(null);
+    }
+  };
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -249,28 +341,6 @@ export default function HomePage() {
     recognition.onend = () => setIsRecording(false);
     recognitionRef.current = recognition;
   }, []);
-
-  const loadEvolution = useCallback(
-    async (days: number) => {
-      if (!profile?.email) return;
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/v1/evolution?days=${days}&profile_email=${encodeURIComponent(profile.email)}`,
-        );
-        if (res.ok) setStats(await res.json());
-      } catch {
-        setStats(null);
-      }
-    },
-    [profile?.email],
-  );
-
-  useEffect(() => {
-    if (tab === 'evolution') {
-      setNarrative(null);
-      loadEvolution(evolutionDays);
-    }
-  }, [tab, evolutionDays, loadEvolution]);
 
   const toggleRecording = () => {
     if (!recognitionRef.current) return;
@@ -339,9 +409,8 @@ export default function HomePage() {
       resetForm();
       setComposerOpen(false);
 
-      // A moment that already came back with a reflection (a goal check-in that
-      // triggered a shortfall nudge — see goal_manager.consider_for_goals on the
-      // backend) keeps that reflection as-is; only the ordinary case reflects here.
+      // A moment that already came back with a reflection keeps it as-is;
+      // only the ordinary case (no reflection yet) reflects here.
       if (!saved.reflection) {
         setReflectingId(saved.id);
         try {
@@ -381,25 +450,15 @@ export default function HomePage() {
     }
   };
 
-  const handleNarrative = async () => {
-    if (!profile?.email) return;
-    setNarrativeLoading(true);
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/evolution/narrative?days=${evolutionDays}&profile_email=${encodeURIComponent(profile.email)}`,
-      );
-      const data = await res.json();
-      if (res.ok) setNarrative(data.narrative);
-    } finally {
-      setNarrativeLoading(false);
-    }
-  };
-
   const streak = useMemo(() => computeStreak(moments), [moments]);
   const hasToday = useMemo(
     () => moments.some((m) => new Date(m.created_at).toDateString() === new Date().toDateString()),
     [moments],
   );
+
+  if (screen === 'checking-session') {
+    return <div className="app-shell" />;
+  }
 
   if (screen === 'login') {
     return (
@@ -412,7 +471,12 @@ export default function HomePage() {
   if (!profile) {
     return (
       <div className="app-shell">
-        <Onboarding initialEmail={pendingEmail} onComplete={handleOnboardingComplete} onSkip={handleSkip} />
+        <Onboarding
+          initialEmail={pendingEmail}
+          initialPassword={pendingPassword}
+          onComplete={handleOnboardingComplete}
+          onSkip={handleSkip}
+        />
       </div>
     );
   }
@@ -461,175 +525,143 @@ export default function HomePage() {
       </header>
 
       <main className="app-content">
-        <AnimatePresence mode="wait">
-          {tab === 'today' ? (
-            <motion.section
-              key="today"
-              className="today"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18 }}
-            >
-              <motion.div className="prompt-bar" onClick={openComposer} whileTap={{ scale: 0.98 }}>
-                <span className="prompt-pill">What&apos;s your thoughts?</span>
+        <motion.section
+          className="today"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }}
+        >
+          <motion.div className="prompt-bar" onClick={openComposer} whileTap={{ scale: 0.98 }}>
+            <span className="prompt-pill">What&apos;s your thoughts?</span>
+          </motion.div>
+
+          <AnimatePresence>
+            {pendingProposals.map((proposal) => (
+              <motion.div
+                key={proposal.profile_entry_id}
+                className="proposal-card"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+                transition={{ duration: 0.25 }}
+              >
+                <span className="proposal-label">Brain 2 &middot; {proposal.domain}</span>
+                <p className="proposal-content">{proposal.content}</p>
+                <div className="proposal-actions">
+                  <button
+                    type="button"
+                    className="proposal-accept"
+                    disabled={proposalBusyId === proposal.profile_entry_id}
+                    onClick={() => acceptProposal(proposal.profile_entry_id)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="proposal-reject"
+                    disabled={proposalBusyId === proposal.profile_entry_id}
+                    onClick={() => rejectProposal(proposal.profile_entry_id)}
+                  >
+                    Not now
+                  </button>
+                </div>
               </motion.div>
+            ))}
+          </AnimatePresence>
 
-              {moments.length === 0 ? (
-                <div className="empty-state">
-                  <p className="empty-title">Nothing here yet</p>
+          <AnimatePresence>
+            {pendingMemories.map((memory) => (
+              <motion.div
+                key={memory.memory_id}
+                className="proposal-card"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+                transition={{ duration: 0.25 }}
+              >
+                <span className="proposal-label">
+                  Brain 2 noticed &middot; {memory.domain || memory.type}
+                </span>
+                <p className="proposal-content">{memory.content}</p>
+                <div className="proposal-actions">
+                  <button
+                    type="button"
+                    className="proposal-accept"
+                    disabled={memoryBusyId === memory.memory_id}
+                    onClick={() => confirmMemory(memory.memory_id)}
+                  >
+                    That&apos;s right
+                  </button>
+                  <button
+                    type="button"
+                    className="proposal-reject"
+                    disabled={memoryBusyId === memory.memory_id}
+                    onClick={() => suppressMemory(memory.memory_id)}
+                  >
+                    Not this
+                  </button>
                 </div>
-              ) : (
-                <div className="feed">
-                  {moments.map((moment, index) => (
-                    <motion.article
-                      key={moment.id}
-                      className="moment-card"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.04 }}
-                    >
-                      <div className="moment-top">
-                        <span className={`source-badge ${moment.source}`}>
-                          {SOURCE_META[moment.source as Source]?.icon ?? '✍️'}
-                        </span>
-                        <span className="moment-time">{timeAgo(moment.created_at)}</span>
-                      </div>
-                      {moment.photo_data_url && <img src={moment.photo_data_url} alt="" className="moment-photo" />}
-                      <p className="moment-content">{moment.content}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
 
-                      {moment.reflection ? (
-                        <motion.div
-                          className="reflection-bubble"
-                          initial={{ opacity: 0, scale: 0.96 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-                        >
-                          <p>{moment.reflection}</p>
-                        </motion.div>
-                      ) : reflectingId === moment.id ? (
-                        <p className="reflecting">
-                          <span className="dot-pulse" />
-                          reflecting…
-                        </p>
-                      ) : (
-                        <motion.button
-                          type="button"
-                          className="reflect-btn"
-                          whileTap={{ scale: 0.94 }}
-                          onClick={() => handleReflect(moment.id)}
-                        >
-                          Reflect on this
-                        </motion.button>
-                      )}
-                    </motion.article>
-                  ))}
-                </div>
-              )}
-            </motion.section>
+          {moments.length === 0 ? (
+            <div className="empty-state">
+              <p className="empty-title">Nothing here yet</p>
+            </div>
           ) : (
-            <motion.section
-              key="evolution"
-              className="evolution"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18 }}
-            >
-              <h1>How you&apos;ve changed</h1>
-
-              <div className="range-row">
-                {[7, 30, 90, 365].map((d) => (
-                  <motion.button
-                    key={d}
-                    type="button"
-                    whileTap={{ scale: 0.94 }}
-                    className={evolutionDays === d ? 'range-chip selected' : 'range-chip'}
-                    onClick={() => setEvolutionDays(d)}
-                  >
-                    {d === 7 ? 'Week' : d === 30 ? 'Month' : d === 90 ? '3 months' : 'Year'}
-                  </motion.button>
-                ))}
-              </div>
-
-              {stats ? (
-                <>
-                  <div className="stat-row">
-                    <div className="stat">
-                      <strong>{stats.moments_in_range}</strong>
-                      <span>captured</span>
-                    </div>
-                    <div className="stat-divider" />
-                    <div className="stat">
-                      <strong>{stats.moments_today}</strong>
-                      <span>today</span>
-                    </div>
-                    <div className="stat-divider" />
-                    <div className="stat">
-                      <strong>{stats.total_moments_all_time}</strong>
-                      <span>all time</span>
-                    </div>
+            <div className="feed">
+              {moments.map((moment, index) => (
+                <motion.article
+                  key={moment.id}
+                  className="moment-card"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.04 }}
+                >
+                  <div className="moment-top">
+                    <span className={`source-badge ${moment.source}`}>
+                      {SOURCE_META[moment.source as Source]?.icon ?? '✍️'}
+                    </span>
+                    <span className="entry-label entry-label-brain1">Brain 1</span>
+                    <span className="moment-time">{timeAgo(moment.created_at)}</span>
                   </div>
+                  {moment.photo_data_url && <img src={moment.photo_data_url} alt="" className="moment-photo" />}
+                  <p className="moment-content">{moment.content}</p>
 
-                  <div className="mood-breakdown">
-                    {Object.entries(stats.mood_counts_in_range).length === 0 && (
-                      <p className="empty-body center">No moods logged in this range yet.</p>
-                    )}
-                    {Object.entries(stats.mood_counts_in_range).map(([mood, count]) => (
-                      <div key={mood} className="mood-bar-row">
-                        <span className="mood-bar-label">{moodLabel(mood) || mood}</span>
-                        <div className="mood-bar-track">
-                          <motion.div
-                            className="mood-bar-fill"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${Math.min(100, (count / stats.moments_in_range) * 100)}%` }}
-                            transition={{ duration: 0.4, ease: 'easeOut' }}
-                          />
-                        </div>
-                        <span className="mood-bar-count">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <motion.button
-                    type="button"
-                    className="narrative-btn"
-                    whileTap={{ scale: 0.97 }}
-                    onClick={handleNarrative}
-                    disabled={narrativeLoading}
-                  >
-                    {narrativeLoading ? 'Thinking about it…' : "Show me how I've changed"}
-                  </motion.button>
-
-                  <AnimatePresence>
-                    {narrative && (
-                      <motion.div
-                        className="narrative-card"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <p>{narrative}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {!stats.has_history_before_range && (
-                    <p className="hint center">This is as far back as your history goes — keep capturing moments and this view will get richer.</p>
+                  {moment.reflection ? (
+                    <motion.div
+                      className="reflection-bubble"
+                      initial={{ opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+                    >
+                      <span className="proposal-label">Brain 2</span>
+                      <p>{moment.reflection}</p>
+                    </motion.div>
+                  ) : reflectingId === moment.id ? (
+                    <p className="reflecting">
+                      <span className="dot-pulse" />
+                      reflecting…
+                    </p>
+                  ) : (
+                    <motion.button
+                      type="button"
+                      className="reflect-btn"
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => handleReflect(moment.id)}
+                    >
+                      Reflect on this
+                    </motion.button>
                   )}
-                </>
-              ) : (
-                <p className="empty-body center">Not enough here yet — save a few moments first.</p>
-              )}
-            </motion.section>
+                </motion.article>
+              ))}
+            </div>
           )}
-        </AnimatePresence>
+        </motion.section>
       </main>
 
       <nav className="tab-bar">
-        <button type="button" aria-label="Today" className={tab === 'today' ? 'tab-bar-item active' : 'tab-bar-item'} onClick={() => setTab('today')}>
-          <HomeIcon active={tab === 'today'} />
-        </button>
         <motion.button
           type="button"
           className="fab"
@@ -641,9 +673,6 @@ export default function HomePage() {
             <path d="M12 5v14M5 12h14" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
           </svg>
         </motion.button>
-        <button type="button" aria-label="Evolution" className={tab === 'evolution' ? 'tab-bar-item active' : 'tab-bar-item'} onClick={() => setTab('evolution')}>
-          <ChartIcon active={tab === 'evolution'} />
-        </button>
       </nav>
 
       <AnimatePresence>

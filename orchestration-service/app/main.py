@@ -1,20 +1,53 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
+import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, AsyncIterator
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import goal_manager, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from . import brain1, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
 from .brain2 import intentions_repo as brain2_intentions_repo
 from .brain2 import orchestrator as brain2
 from .brain2 import profile_store as brain2_profile_store
-from .clients import AgenticServiceClient, AgenticServiceError
+from .brain2 import scheduler as brain2_scheduler
+from .spinal_cord import AgenticServiceClient, AgenticServiceError
 from .config import settings
+
+logger = logging.getLogger(__name__)
+
+# Brain 2's Scheduler (ADD §8.2 step 1) as a single in-process background
+# job — appropriate for the MVP modular-monolith shape (ADD §5.1). Running
+# more than one worker process would run this cycle redundantly per worker;
+# that's a scale-out trigger (ADD §5.2), not a correctness problem, since
+# every recheck is idempotent (it only ever drafts a proposal when one isn't
+# already pending — see scheduler._has_pending_proposal).
+_brain2_background_scheduler = BackgroundScheduler(daemon=True)
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if settings.brain2_scheduler_enabled:
+        _brain2_background_scheduler.add_job(
+            brain2_scheduler.run_recheck_cycle,
+            'interval',
+            hours=settings.brain2_recheck_interval_hours,
+            id='brain2_recheck',
+            next_run_time=datetime.now(timezone.utc),  # also run one pass immediately on startup
+        )
+        _brain2_background_scheduler.start()
+        logger.info(
+            'Brain 2 Scheduler started: rechecking every %s hour(s)', settings.brain2_recheck_interval_hours
+        )
+    yield
+    if _brain2_background_scheduler.running:
+        _brain2_background_scheduler.shutdown(wait=False)
+
 
 app = FastAPI(
     title='selfie.Me Orchestration Service',
@@ -24,6 +57,7 @@ app = FastAPI(
         'thoughts) and reflects them back using only that person\'s own history — never '
         'outside opinions, other people\'s data, or generic advice.'
     ),
+    lifespan=_lifespan,
 )
 
 app.add_middleware(
@@ -86,6 +120,7 @@ class ApproveStepIn(BaseModel):
 class ProfileIn(BaseModel):
     email: str = Field(..., min_length=3, description='Also the login identifier')
     full_name: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=6, description='Set once at profile creation; hashed before storage')
     dob: str | None = None
     location: str | None = None
     interests: list[str] = Field(default_factory=list)
@@ -94,6 +129,13 @@ class ProfileIn(BaseModel):
     quote: str | None = None
 
 
+class LoginIn(BaseModel):
+    password: str = Field(..., min_length=1)
+
+
+# password / password_hash deliberately never appear on this model — nothing
+# that returns a ProfileOut can leak it, even by accident (main.py never
+# builds one from a raw profiles_repo row without going through this).
 class ProfileOut(BaseModel):
     email: str
     full_name: str
@@ -113,6 +155,7 @@ class MemoryOut(BaseModel):
     memory_id: str
     profile_email: str
     type: str
+    domain: str | None = None
     content: str
     explicitness: str
     confidence: float
@@ -129,6 +172,7 @@ class MemoryOut(BaseModel):
 class MemoryIn(BaseModel):
     profile_email: str = Field(..., min_length=3)
     type: str = Field(..., description='fact | preference | goal | relationship | event | routine | constraint | project_context | user_instruction')
+    domain: str | None = Field(default=None, description='Open Profile domain (skill/emotion/learning/reading/...), ADD §6.1 — omit if this memory feeds no Profile domain')
     content: str = Field(..., min_length=1)
     sensitivity_tier: str = Field(default='T2', description='T0-T3, see ADD §7.1')
 
@@ -192,13 +236,26 @@ def health() -> dict[str, str]:
 
 @app.post('/api/v1/profiles', response_model=ProfileOut)
 def save_profile(payload: ProfileIn) -> ProfileOut:
-    """Creates or overwrites the profile for this email — the login flow's write side."""
+    """Creates Brain 1's record — account creation only, not a general-purpose
+
+    update. Rejects an email that already has a profile (409): with password
+    auth in place, re-POSTing to an existing email must never be a way to
+    silently overwrite it without knowing the current password — a returning
+    person logs in via `POST /api/v1/profiles/{email}/login` instead. Goes
+    through `brain1.create`, not `profiles_repo` directly, so that the first
+    time this email is ever seen, Brain 2's side of the architecture (the
+    Scheduler, ADD §1.1/§8.2) is already live for them, not merely eligible
+    for its next cycle.
+    """
     if payload.photo_data_url and len(payload.photo_data_url) > MAX_PHOTO_DATA_URL_LENGTH:
         raise HTTPException(status_code=413, detail='Photo is too large for this MVP (limit ~1.5MB).')
+    if profiles_repo.get_profile(payload.email) is not None:
+        raise HTTPException(status_code=409, detail='An account already exists for this email. Log in instead.')
 
-    row = profiles_repo.upsert_profile(
+    row = brain1.create(
         email=payload.email,
         full_name=payload.full_name,
+        password=payload.password,
         dob=payload.dob,
         location=payload.location,
         interests=payload.interests,
@@ -217,11 +274,44 @@ def list_profiles() -> list[ProfileOut]:
 
 @app.get('/api/v1/profiles/{email}', response_model=ProfileOut)
 def get_profile(email: str) -> ProfileOut:
-    """The login flow's read side: given an email, fetch the saved profile."""
+    """Existence check only — the login flow's first step, to decide whether
+
+    to prompt for a password or drop into onboarding. Never a way to log in
+    by itself (it asks nothing and proves nothing about the caller); see
+    `login_profile` below for the actual password check.
+    """
     row = profiles_repo.get_profile(email)
     if row is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
     return ProfileOut(**row)
+
+
+@app.post('/api/v1/profiles/{email}/login', response_model=ProfileOut)
+def login_profile(email: str, payload: LoginIn) -> ProfileOut:
+    """The login flow's actual authentication step — verifies the password
+
+    against the stored bcrypt hash (`brain1.authenticate`) and returns the
+    profile only on a match. A wrong password and an unknown email both come
+    back as 401 with the same generic detail, deliberately not distinguished,
+    so this endpoint can't be used to enumerate which emails have accounts.
+    """
+    row = brain1.authenticate(email, payload.password)
+    if row is None:
+        raise HTTPException(status_code=401, detail='Incorrect email or password.')
+    return ProfileOut(**row)
+
+
+@app.get('/api/v1/brain1/{email}/key-areas')
+def brain1_key_areas(email: str) -> list[dict[str, Any]]:
+    """Brain 1's key areas (ADD §6.1: skill/emotion/learning/reading, plus
+
+    any custom domain this person has actually used) with Brain 2's current,
+    honest status for each — an accepted entry if one exists, how many
+    active memories feed it, and whether something is waiting for review.
+    """
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    return brain1.key_areas_overview(email)
 
 
 def _profile_facts(row: dict[str, Any]) -> dict[str, Any]:
@@ -237,7 +327,7 @@ def _profile_facts(row: dict[str, Any]) -> dict[str, Any]:
 
 @app.post('/api/v1/profiles/{email}/conversation/open', response_model=ConversationOpenOut)
 def open_conversation(email: str) -> ConversationOpenOut:
-    """Stage 1: the 'profile' agent opens the conversation — grounded only in the
+    """Stage 1: Thalamus opens the conversation — grounded only in the
 
     profile, inviting them to say how they're doing. It decides nothing and performs
     no action; it's just the door opening. Called once at the start of the app, after
@@ -247,7 +337,7 @@ def open_conversation(email: str) -> ConversationOpenOut:
     if row is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
 
-    result = _run_agent('profile', {'operation': 'open_conversation', **_profile_facts(row)})
+    result = _run_agent('thalamus', _profile_facts(row))
     return ConversationOpenOut(opening_message=result.get('opening_message', ''))
 
 
@@ -255,9 +345,9 @@ def open_conversation(email: str) -> ConversationOpenOut:
 def respond_to_conversation(email: str, payload: ConversationRespondIn) -> ConversationRespondOut:
     """Stage 2: the person answers, in their own words, how they're doing.
 
-    The 'profile' agent turns that into structured understanding (mood, context,
+    Sensory Cortex turns that into structured understanding (mood, context,
     narrative focus) — still no advice, no suggestions. That understanding is then
-    handed to the 'smart' agent, which is the one that actually decides what this
+    handed to Prefrontal Cortex, which is the one that actually decides what this
     person needs and produces the welcome + suggested first moment. Understanding is
     also persisted on the profile so it keeps shaping reflections and the evolution
     narrative afterward, not just this one screen.
@@ -267,8 +357,8 @@ def respond_to_conversation(email: str, payload: ConversationRespondIn) -> Conve
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
 
     understanding = _run_agent(
-        'profile',
-        {'operation': 'understand', 'response_text': payload.response_text, **_profile_facts(row)},
+        'sensory_cortex',
+        {'response_text': payload.response_text, **_profile_facts(row)},
     )
     mood_summary = understanding.get('mood_summary', '')
     context_notes = understanding.get('context_notes', '')
@@ -284,7 +374,7 @@ def respond_to_conversation(email: str, payload: ConversationRespondIn) -> Conve
     )
 
     recent_moments = [_moment_payload(MomentOut(**m)) for m in moments_repo.list_moments(email)[:10]]
-    decision = _run_smart_agent(
+    decision = _run_prefrontal_cortex(
         'suggest_next_step',
         full_name=row['full_name'],
         interests=row['interests'],
@@ -317,25 +407,13 @@ def create_moment(payload: MomentIn) -> MomentOut:
     rag_store.index_moment(row['id'], row['content'], payload.profile_email)
     profile = profiles_repo.get_profile(payload.profile_email)
 
-    # Memory extraction and goal-signal extraction are independent LLM calls
-    # over the same text — run them concurrently rather than adding a third
-    # sequential wait on top of the reflect call the frontend makes next.
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        memory_future = executor.submit(
-            memory_manager.remember_from_text,
-            profile_email=payload.profile_email,
-            source_text=row['content'],
-            source_type='moment',
-            source_id=row['id'],
-            full_name=profile['full_name'] if profile else None,
-        )
-        goal_future = executor.submit(goal_manager.consider_for_goals, payload.profile_email, row['content'])
-        memory_future.result()
-        goal_reflection = goal_future.result()
-
-    if goal_reflection:
-        moments_repo.set_reflection(row['id'], payload.profile_email, goal_reflection)
-        row['reflection'] = goal_reflection
+    memory_manager.remember_from_text(
+        profile_email=payload.profile_email,
+        source_text=row['content'],
+        source_type='moment',
+        source_id=row['id'],
+        full_name=profile['full_name'] if profile else None,
+    )
 
     return MomentOut(**row)
 
@@ -360,11 +438,16 @@ def _moment_payload(moment: MomentOut) -> dict[str, Any]:
 def list_memories(
     profile_email: str = Query(..., min_length=3),
     status: str | None = Query(default='active'),
+    domain: str | None = Query(default=None),
 ) -> list[MemoryOut]:
     """Lists this profile's memories. Defaults to active only; pass status=
 
-    (empty) to see every status, or a specific one (requires_confirmation, etc.)."""
-    return [MemoryOut(**m) for m in memory_repo.list_memories(profile_email, status=status or None)]
+    (empty) to see every status, or a specific one (requires_confirmation, etc.).
+    Pass domain to see only memories tagged to one Profile domain (ADD §6.1)."""
+    return [
+        MemoryOut(**m)
+        for m in memory_repo.list_memories(profile_email, status=status or None, domain=domain)
+    ]
 
 
 @app.post('/api/v1/memories', response_model=MemoryOut)
@@ -383,6 +466,7 @@ def create_memory(payload: MemoryIn) -> MemoryOut:
     memory = memory_repo.create_memory(
         profile_email=payload.profile_email,
         memory_type=payload.type,
+        domain=payload.domain,
         content=payload.content,
         explicitness='explicit',
         confidence=1.0,
@@ -482,7 +566,8 @@ def _run_agent(agent_name: str, goal_payload: dict[str, Any]) -> dict[str, Any]:
 
     not a raw model call. Orchestration owns the data, the Agentic Layer owns the
     reasoning about it, and the run is planned/authorized/observed like any other agent —
-    every agent (smart, profile, and whatever comes next) goes through this same door.
+    every cognitive agent (Thalamus, Sensory Cortex, Hippocampus, Prefrontal Cortex,
+    Amygdala, Broca's Area, and whatever comes next) goes through this same door.
     """
     client = AgenticServiceClient()
     goal = json.dumps(goal_payload)
@@ -503,8 +588,14 @@ def _run_agent(agent_name: str, goal_payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _run_smart_agent(mode: str, **payload: Any) -> dict[str, Any]:
-    return _run_agent('smart', {'mode': mode, **payload})
+def _run_prefrontal_cortex(mode: str, **payload: Any) -> dict[str, Any]:
+    """`reflect_moment`/`evolution_narrative`/`suggest_next_step` all live on
+
+    Prefrontal Cortex now (ADD §8's body-region naming) — one agent, three
+    routed operations, since all three are the same job (reasoning from past
+    to present to decide what's next), not three unrelated capabilities.
+    """
+    return _run_agent('prefrontal_cortex', {'mode': mode, **payload})
 
 
 def _all_moments(profile_email: str) -> list[MomentOut]:
@@ -512,11 +603,11 @@ def _all_moments(profile_email: str) -> list[MomentOut]:
 
 
 def _understanding_for(profile_email: str) -> dict[str, str]:
-    """The ProfileAgent's read on this person, if a conversation has ever run for them —
+    """Sensory Cortex's read on this person, if a conversation has ever run for them —
 
-    threaded into every SmartAgent call below so what they told us about themselves,
-    and how they said they were feeling, actually shapes how their reflections and
-    evolution narrative get written.
+    threaded into every Prefrontal Cortex call below so what they told us about
+    themselves, and how they said they were feeling, actually shapes how their
+    reflections and evolution narrative get written.
     """
     row = profiles_repo.get_profile(profile_email)
     if not row:
@@ -532,20 +623,22 @@ def _understanding_for(profile_email: str) -> dict[str, str]:
 def reflect_on_moment(moment_id: str, profile_email: str = Query(..., min_length=3)) -> ReflectionOut:
     """Reflects one moment back using ONLY this person's own prior moments as context —
 
-    routed through the 'smart' agent run, so it's planned, policy-checked (READ_ONLY,
-    auto-approved), and recorded in an audit trail like any other agent action.
+    routed through Prefrontal Cortex's agent run, so it's planned, policy-checked
+    (READ_ONLY, auto-approved), and recorded in an audit trail like any other agent action.
     """
     moment = _find_moment(moment_id, profile_email)
     recent_others = [m for m in _all_moments(profile_email) if m.id != moment_id][:30]
-    past_moments = list(reversed(recent_others))  # oldest to newest, matching SmartAgent's prompt contract
+    past_moments = list(reversed(recent_others))  # oldest to newest, matching Prefrontal Cortex's prompt contract
     relevant_memories = memory_manager.recall(profile_email, moment.content, top_k=5)
+    profile_row = profiles_repo.get_profile(profile_email)
 
-    result = _run_smart_agent(
+    result = _run_prefrontal_cortex(
         'reflect_moment',
         moment=_moment_payload(moment),
         past_moments=[_moment_payload(m) for m in past_moments],
         relevant_memories=[{'type': m['type'], 'content': m['content']} for m in relevant_memories],
         **_understanding_for(profile_email),
+        **(_profile_facts(profile_row) if profile_row else {}),
     )
 
     moments_repo.set_reflection(moment.id, profile_email, result['reflection'])
@@ -587,13 +680,13 @@ def evolution(profile_email: str = Query(..., min_length=3), days: int = Query(d
 def evolution_narrative(
     profile_email: str = Query(..., min_length=3), days: int = Query(default=30, ge=1, le=3650)
 ) -> dict[str, Any]:
-    """An AI-written 'how you've changed' summary — routed through the 'smart' agent run."""
+    """An AI-written 'how you've changed' summary — routed through Prefrontal Cortex's agent run."""
     now = datetime.now(timezone.utc)
     window_cutoff = now - timedelta(days=days)
     in_window = [m for m in _all_moments(profile_email) if m.created_at >= window_cutoff]
     oldest_to_newest = list(reversed(in_window))
 
-    result = _run_smart_agent(
+    result = _run_prefrontal_cortex(
         'evolution_narrative',
         moments=[_moment_payload(m) for m in oldest_to_newest],
         **_understanding_for(profile_email),
@@ -751,11 +844,56 @@ def brain2_propose_from_intention(intention_id: str, payload: Brain2RefineIn) ->
     streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
     return brain2.propose_refinement(
         profile_email=payload.profile_email,
+        domain=intention['domain'],
+        user_reflection=payload.user_reflection,
         intention=intention,
         streak=streak,
         support_message=payload.support_message,
+    )
+
+
+class Brain2DomainProposalIn(BaseModel):
+    profile_email: str = Field(..., min_length=3)
+    user_reflection: str = Field(..., min_length=1)
+
+
+@app.post('/api/v1/brain2/profile/{domain}/proposal')
+def brain2_propose_for_domain(domain: str, payload: Brain2DomainProposalIn) -> dict[str, Any]:
+    """Generic entry point into the Profile refinement loop (ADD §6.1/§8.2) for
+
+    any domain that isn't goal-adherence tracking — grounded in this domain's
+    own active `memories` rather than an intention/checkin streak. This is
+    how a skill/emotion/learning/reading Profile entry gets proposed.
+    """
+    return brain2.propose_refinement(
+        profile_email=payload.profile_email,
+        domain=domain,
         user_reflection=payload.user_reflection,
     )
+
+
+@app.get('/api/v1/brain2/pending')
+def brain2_list_pending(profile_email: str = Query(..., min_length=3)) -> list[dict[str, Any]]:
+    """Everything Brain 2 has drafted and is waiting on Brain 1 to review —
+
+    across every domain, including proposals the Scheduler drafted on its
+    own with no new input while Brain 1 was away (ADD §8.2 step 1). This is
+    how 'Brain 2 keeps working while you're offline' actually surfaces:
+    nothing pings you — you see it here next time you open the app.
+    """
+    return brain2_profile_store.list_pending(profile_email)
+
+
+@app.post('/api/v1/brain2/scheduler/run-now')
+def brain2_run_scheduler_now() -> dict[str, Any]:
+    """Manually triggers one Scheduler recheck cycle immediately, across every
+
+    profile — for testing/demo without waiting for the next interval. The
+    real cycle runs automatically on `settings.brain2_recheck_interval_hours`
+    for as long as this process is up (see `_lifespan` above).
+    """
+    drafted = brain2_scheduler.run_recheck_cycle()
+    return {'drafted_count': len(drafted), 'drafted': drafted}
 
 
 @app.get('/api/v1/brain2/profile/{domain}')
@@ -784,17 +922,29 @@ def brain2_accept_proposal(proposal_id: str, payload: Brain2ProposalActionIn) ->
 def brain2_refine_proposal(proposal_id: str, payload: Brain2ReviseIn) -> dict[str, Any]:
     """Brain 1 wants the draft reworked. Rejects this version (kept in history)
 
-    and drafts a new one incorporating the additional reflection.
+    and drafts a new one incorporating the additional reflection. Works for
+    any domain: if this domain has an active intention (goal-adherence), its
+    streak/target re-ground the redraft; otherwise the redraft is grounded in
+    this domain's own `memories`, same as the generic proposal path.
     """
     entry = brain2_profile_store.get_entry(proposal_id, payload.profile_email)
     if entry is None:
         raise HTTPException(status_code=404, detail=f'Unknown proposal {proposal_id}')
+
     intention = brain2_intentions_repo.get_active_intention(payload.profile_email, entry['domain'])
-    if intention is None:
-        raise HTTPException(status_code=404, detail=f"No active intention for domain '{entry['domain']}'")
-    checkins = brain2_intentions_repo.list_checkins(intention['intention_id'], payload.profile_email)
-    streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
-    return brain2.refine_proposal(proposal_id, payload.profile_email, payload.additional_reflection, streak, payload.support_message)
+    streak = None
+    if intention is not None:
+        checkins = brain2_intentions_repo.list_checkins(intention['intention_id'], payload.profile_email)
+        streak = brain2_intentions_repo.shortfall_streak(checkins, intention['target_minutes'])
+
+    return brain2.refine_proposal(
+        proposal_id,
+        payload.profile_email,
+        payload.additional_reflection,
+        intention=intention,
+        streak=streak,
+        support_message=payload.support_message,
+    )
 
 
 @app.post('/api/v1/brain2/profile/proposals/{proposal_id}/reject')

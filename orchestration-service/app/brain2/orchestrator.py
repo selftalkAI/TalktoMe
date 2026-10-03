@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..clients import AgenticServiceClient, AgenticServiceError
+from .. import memory_repo
+from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import intentions_repo, profile_store
 
-# Brain 2 is one orchestrating model taking on different jobs at different
-# moments (ADD §8.2, ADR-013) — this module IS that orchestrator for the
-# intention/support/Profile loop. It never calls the model to decide WHETHER
-# something happened (that's `intentions_repo.shortfall_streak`, a
-# deterministic gate, same layer as `memory_manager.py`'s write-gate); the
-# model is only ever asked to compose language once this module has already
-# decided a moment is worth talking about.
+# This module is Brain 2's orchestrator for the intention/support/Profile
+# loop (ADD §8.2, ADR-013) — it decides WHETHER and calls the right cognitive
+# agent (Amygdala for a support message, Broca's Area for a Profile
+# narrative, see `agentic-service/app/agents/`) to compose the language. It
+# never calls a model to decide whether something happened — that's
+# `intentions_repo.shortfall_streak`, a deterministic gate, same layer as
+# `memory_manager.py`'s write-gate. A model is only ever asked to compose
+# language once this module has already decided a moment is worth talking
+# about.
 #
 # Every path that could change durable state is explicit and named for what
 # it does to Brain 1's trust: `set_intention` and `log_checkin` write ground
@@ -61,16 +64,18 @@ def offer_support(profile_email: str, intention: dict[str, Any], streak: int, ch
     show Brain 1, not something recorded as fact about them.
     """
     payload = {
-        'mode': 'brain2_support_message',
         'domain': intention['domain'],
         'title': intention['title'],
         'target_minutes': intention['target_minutes'],
         'streak': streak,
-        'checkins': [{'checkin_date': c['checkin_date'], 'actual_minutes': c['actual_minutes']} for c in checkins],
+        'checkins': [
+            {'checkin_date': c['checkin_date'], 'actual_minutes': c['actual_minutes'], 'note': c.get('note')}
+            for c in checkins
+        ],
     }
     try:
         agentic = AgenticServiceClient()
-        run = agentic.create_agent_run('smart', user_id=profile_email, goal=_as_json(payload))
+        run = agentic.create_agent_run('amygdala', user_id=profile_email, goal=_as_json(payload))
     except AgenticServiceError:
         return _fallback_support_message(intention, streak)
 
@@ -82,43 +87,77 @@ def offer_support(profile_email: str, intention: dict[str, Any], streak: int, ch
 
 def propose_refinement(
     profile_email: str,
-    intention: dict[str, Any],
-    streak: int,
-    support_message: str,
+    domain: str,
     user_reflection: str,
+    intention: dict[str, Any] | None = None,
+    streak: int | None = None,
+    support_message: str = '',
     source_memory_ids: list[str] | None = None,
+    pending_draft_content: str | None = None,
 ) -> dict[str, Any]:
-    """Drafts the Profile proposal — never writes it. Returns a `profile_entries`
+    """Drafts a Profile proposal for any domain — never writes it. Returns a
 
-    row with status='proposed'; only `accept_proposal` can ever change that.
+    `profile_entries` row with status='proposed'; only `accept_proposal` can
+    ever change that.
+
+    Two ways to reach this, per ADD §6.1/§8.2:
+    - The goal-adherence domain passes `intention`/`streak`/`support_message`
+      — its own deterministic ground truth (`intentions_repo`).
+    - Every other domain (skill, emotion, learning, reading, ...) passes none
+      of those; grounding instead comes from this domain's own active,
+      durable `memories` rows — the generic path any domain can use without
+      needing an intention/checkin/streak concept of its own.
+
+    `pending_draft_content`, when given, is a PRIOR draft of this exact
+    conversation that is still sitting unanswered (status='proposed', not yet
+    accepted) — distinct from `previous_entry_content` below, which is the
+    last ACCEPTED version. Passing it tells Broca "you already said this and
+    nobody has responded yet" so it can deliberately check in or offer
+    something different rather than drifting into repeating itself.
     """
-    previous = profile_store.get_accepted(profile_email, intention['domain'])
-    payload = {
-        'mode': 'brain2_profile_narrative',
-        'domain': intention['domain'],
-        'title': intention['title'],
-        'target_minutes': intention['target_minutes'],
-        'streak': streak,
-        'support_message': support_message,
+    previous = profile_store.get_accepted(profile_email, domain)
+    domain_memories = memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
+
+    payload: dict[str, Any] = {
+        'domain': domain,
         'user_reflection': user_reflection,
         'previous_entry_content': previous['content'] if previous else None,
+        'domain_memories': [m['content'] for m in domain_memories],
     }
+    if pending_draft_content:
+        payload['pending_draft_content'] = pending_draft_content
+    if intention is not None:
+        payload['title'] = intention['title']
+        payload['target_minutes'] = intention['target_minutes']
+        payload['streak'] = streak
+        payload['support_message'] = support_message
+
+    world_knowledge = _fetch_world_knowledge(
+        profile_email=profile_email,
+        domain=domain,
+        user_reflection=user_reflection,
+        domain_memories=[m['content'] for m in domain_memories],
+        intention=intention,
+    )
+    if world_knowledge:
+        payload['world_knowledge'] = world_knowledge
+
     try:
         agentic = AgenticServiceClient()
-        run = agentic.create_agent_run('smart', user_id=profile_email, goal=_as_json(payload))
+        run = agentic.create_agent_run('broca', user_id=profile_email, goal=_as_json(payload))
         result = _first_step_result(run)
         content = (result or {}).get('content') or ''
     except AgenticServiceError:
         content = ''
 
     if not content:
-        content = _fallback_profile_content(intention, streak, support_message, user_reflection)
+        content = _fallback_profile_content(domain, user_reflection, intention, streak, support_message)
 
     return profile_store.propose(
         profile_email=profile_email,
-        domain=intention['domain'],
+        domain=domain,
         content=content,
-        source_memory_ids=source_memory_ids or [],
+        source_memory_ids=source_memory_ids or [m['memory_id'] for m in domain_memories],
     )
 
 
@@ -128,29 +167,33 @@ def accept_proposal(profile_entry_id: str, profile_email: str) -> dict[str, Any]
 
 
 def refine_proposal(
-    profile_entry_id: str, profile_email: str, additional_reflection: str, streak: int, support_message: str
+    profile_entry_id: str,
+    profile_email: str,
+    additional_reflection: str,
+    intention: dict[str, Any] | None = None,
+    streak: int | None = None,
+    support_message: str = '',
 ) -> dict[str, Any]:
     """Brain 1 isn't satisfied with the draft — reject this version and draft a
 
     new one incorporating what they added. The rejected draft stays in
-    history; nothing about it is deleted.
+    history; nothing about it is deleted. `intention`/`streak` are only
+    passed when this domain's proposal came from the goal-adherence flow
+    (see `propose_refinement`) — every other domain refines from its own
+    `memories`, which `propose_refinement` re-reads on its own.
     """
     entry = profile_store.get_entry(profile_entry_id, profile_email)
     if entry is None:
         raise KeyError(f'Unknown profile entry {profile_entry_id} for {profile_email}')
     profile_store.reject(profile_entry_id, profile_email)
 
-    intention = intentions_repo.get_active_intention(profile_email, entry['domain'])
-    if intention is None:
-        raise KeyError(f"No active intention for domain '{entry['domain']}' to refine against")
-
-    combined_reflection = additional_reflection
     return propose_refinement(
         profile_email=profile_email,
+        domain=entry['domain'],
+        user_reflection=additional_reflection,
         intention=intention,
         streak=streak,
         support_message=support_message,
-        user_reflection=combined_reflection,
         source_memory_ids=entry['source_memory_ids'],
     )
 
@@ -165,6 +208,41 @@ def adjust_intention(profile_email: str, intention_id: str, new_target_minutes: 
     call being carried out, not Brain 2 deciding on its own.
     """
     return intentions_repo.supersede_intention(intention_id, profile_email, new_target_minutes)
+
+
+def _fetch_world_knowledge(
+    profile_email: str,
+    domain: str,
+    user_reflection: str,
+    domain_memories: list[str],
+    intention: dict[str, Any] | None,
+) -> str:
+    """Queries WorldKnowledge (ADD §8.2 step 5) for an outside benchmark to
+
+    compare against what Brain 1 has said in this domain — best-effort, same
+    contract as every other agent call here: an unreachable Agentic Service
+    or empty context just means no benchmark this time, never a failure of
+    the proposal itself.
+    """
+    context_parts = list(domain_memories)
+    if intention is not None:
+        context_parts.append(f"Intention: \"{intention['title']}\", target {intention['target_minutes']} min/day")
+    if user_reflection:
+        context_parts.append(user_reflection)
+    context = ' | '.join(context_parts)
+    if not context:
+        return ''
+
+    try:
+        agentic = AgenticServiceClient()
+        run = agentic.create_agent_run(
+            'world_knowledge', user_id=profile_email, goal=_as_json({'domain': domain, 'context': context})
+        )
+    except AgenticServiceError:
+        return ''
+
+    result = _first_step_result(run)
+    return (result or {}).get('benchmark') or ''
 
 
 def _first_step_result(run: dict[str, Any]) -> dict[str, Any] | None:
@@ -197,10 +275,19 @@ def _fallback_support_message(intention: dict[str, Any], streak: int) -> dict[st
     }
 
 
-def _fallback_profile_content(intention: dict[str, Any], streak: int, support_message: str, user_reflection: str) -> str:
+def _fallback_profile_content(
+    domain: str,
+    user_reflection: str,
+    intention: dict[str, Any] | None,
+    streak: int | None,
+    support_message: str,
+) -> str:
+    """Used only when the Agentic Service is unreachable — see `_fallback_support_message`."""
     reflection = user_reflection or 'no reflection was recorded'
-    return (
-        f"For {streak} days you fell short of your {intention['target_minutes']} min/day goal for "
-        f"'{intention['title']}'. Brain 2 asked what was getting in the way instead of pushing harder. "
-        f'You said: {reflection}'
-    )
+    if intention is not None:
+        return (
+            f"For {streak} days you fell short of your {intention['target_minutes']} min/day goal for "
+            f"'{intention['title']}'. Brain 2 asked what was getting in the way instead of pushing harder. "
+            f'You said: {reflection}'
+        )
+    return f"In your '{domain}' domain, you reflected: {reflection}"

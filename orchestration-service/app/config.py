@@ -25,6 +25,12 @@ class Settings:
             for origin in os.getenv('CORS_ALLOW_ORIGINS', 'http://localhost:3000').split(',')
             if origin.strip()
         ]
+        # Brain 2's Scheduler (ADD §8.2 step 1) — how often it rechecks every
+        # profile/domain for something worth drafting, with no new input.
+        # Runs in-process for as long as this service is up (see brain2/scheduler.py);
+        # it does not make the process itself run while the machine is asleep.
+        self.brain2_scheduler_enabled: bool = os.getenv('BRAIN2_SCHEDULER_ENABLED', 'true').lower() == 'true'
+        self.brain2_recheck_interval_hours: float = float(os.getenv('BRAIN2_RECHECK_INTERVAL_HOURS', '24'))
 
 
 settings = Settings()

@@ -6,6 +6,10 @@ import { motion } from 'framer-motion';
 export type Profile = {
   fullName: string;
   email: string;
+  // Only ever populated transiently, while onboarding builds the payload for
+  // account creation — stripped before the profile is kept in app state
+  // (page.tsx), never present on a profile loaded via login.
+  password?: string;
   dob: string;
   location: string;
   interests: string[];
@@ -57,10 +61,11 @@ function ClearableField({
   );
 }
 
-function emptyProfile(initialEmail: string): Profile {
+function emptyProfile(initialEmail: string, initialPassword: string): Profile {
   return {
     fullName: '',
     email: initialEmail,
+    password: initialPassword,
     dob: '',
     location: '',
     interests: [],
@@ -72,17 +77,26 @@ function emptyProfile(initialEmail: string): Profile {
 
 export default function Onboarding({
   initialEmail,
+  initialPassword,
   onComplete,
   onSkip,
 }: {
   initialEmail: string;
+  initialPassword: string;
   onComplete: (profile: Profile) => Promise<void>;
   onSkip: () => void;
 }) {
   const [step, setStep] = useState(1);
-  const [profile, setProfile] = useState<Profile>(() => emptyProfile(initialEmail));
+  const [profile, setProfile] = useState<Profile>(() => emptyProfile(initialEmail, initialPassword));
+  const [confirmPassword, setConfirmPassword] = useState(initialPassword);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const password = profile.password ?? '';
+  const passwordTooShort = password.length > 0 && password.length < 6;
+  const passwordsMismatch = confirmPassword.length > 0 && confirmPassword !== password;
+  const canContinueFromStep1 =
+    profile.fullName.trim() && profile.email.trim() && password.length >= 6 && confirmPassword === password;
 
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -159,6 +173,34 @@ export default function Onboarding({
             />
 
             <label className="form-field">
+              <span>Password</span>
+              <div className="form-field-input">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setProfile((p) => ({ ...p, password: e.target.value }))}
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordTooShort && <span className="error-text">At least 6 characters.</span>}
+            </label>
+
+            <label className="form-field">
+              <span>Confirm password</span>
+              <div className="form-field-input">
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Type it again"
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordsMismatch && <span className="error-text">Passwords don&apos;t match.</span>}
+            </label>
+
+            <label className="form-field">
               <span>Date of birth</span>
               <input type="date" value={profile.dob} onChange={(e) => setProfile((p) => ({ ...p, dob: e.target.value }))} />
             </label>
@@ -174,7 +216,7 @@ export default function Onboarding({
               type="button"
               className="onboarding-continue"
               whileTap={{ scale: 0.97 }}
-              disabled={!profile.fullName.trim() || !profile.email.trim()}
+              disabled={!canContinueFromStep1}
               onClick={() => setStep(2)}
             >
               Continue <span aria-hidden>→</span>

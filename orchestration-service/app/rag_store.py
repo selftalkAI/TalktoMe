@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import chromadb
 
-from .clients import AgenticServiceClient, AgenticServiceError
+from .spinal_cord import AgenticServiceClient, AgenticServiceError
 from .paths import RAG_STORAGE_DIR
 
 # Local vector storage for RAG — under Storage/rag_storage/. Embeddings come
@@ -17,7 +17,7 @@ from .paths import RAG_STORAGE_DIR
 _client = chromadb.PersistentClient(path=str(RAG_STORAGE_DIR))
 _collection = _client.get_or_create_collection('moments')
 
-# The ProfileAgent's understanding, one document per conversation turn — unlike
+# Sensory Cortex's understanding, one document per conversation turn — unlike
 # the `profiles` SQL row (which only ever holds the latest snapshot), this
 # builds a searchable history of how someone has said they're feeling over
 # time, so a future agent can ask "how has their mood been trending" instead

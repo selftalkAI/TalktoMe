@@ -4,10 +4,10 @@ import json
 from typing import Any
 
 from . import memory_repo, rag_store
-from .clients import AgenticServiceClient, AgenticServiceError
+from .spinal_cord import AgenticServiceClient, AgenticServiceError
 
 # Deterministic write-gate thresholds (TDD §5 step 5 / ADD §13's write gate).
-# The model (SmartAgent's extract_memories) only proposes candidates; these
+# The model (Hippocampus's extract_memories) only proposes candidates; these
 # thresholds decide what actually becomes durable, kept outside the model
 # per ADR-007.
 MIN_CONFIDENCE_TO_STORE = 0.4
@@ -26,7 +26,8 @@ def remember_from_text(
     Best-effort: failure here must never break the caller's main flow (saving a
     moment, responding in a conversation) — same rule as rag_store's indexing.
     Runs through the same agent-run pipeline (plan -> policy -> execute -> audit)
-    as every other agent action, via SmartAgent's 'extract_memories' mode.
+    as every other agent action, via Hippocampus's 'extract_memories' operation
+    (ADD §8's body-region naming — encoding raw text into candidate memory).
     """
     source_text = (source_text or '').strip()
     if not source_text:
@@ -38,13 +39,12 @@ def remember_from_text(
         agentic = AgenticServiceClient()
         goal = json.dumps(
             {
-                'mode': 'extract_memories',
                 'source_text': source_text,
                 'existing_active_memories': existing,
                 'full_name': full_name or '',
             }
         )
-        run = agentic.create_agent_run('smart', user_id=profile_email, goal=goal)
+        run = agentic.create_agent_run('hippocampus', user_id=profile_email, goal=goal)
     except AgenticServiceError:
         return []
 
@@ -78,6 +78,10 @@ def _apply_write_gate(
     content = (candidate.get('content') or '').strip()
     if memory_type not in memory_repo.VALID_TYPES or not content:
         return None
+
+    domain = candidate.get('domain')
+    if not isinstance(domain, str) or not domain.strip():
+        domain = None
 
     confidence = _clamp_confidence(candidate.get('confidence'))
     if confidence < MIN_CONFIDENCE_TO_STORE:
@@ -116,6 +120,7 @@ def _apply_write_gate(
         rationale_code=rationale_code,
         source_type=source_type,
         source_id=source_id,
+        domain=domain,
     )
     if status == memory_repo.ACTIVE:
         rag_store.index_memory(memory['memory_id'], memory['content'], profile_email, memory_type)

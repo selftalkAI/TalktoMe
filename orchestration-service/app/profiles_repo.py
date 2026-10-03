@@ -24,25 +24,33 @@ def upsert_profile(
     other_interests: str | None,
     photo_data_url: str | None,
     quote: str | None,
+    password_hash: str | None = None,
 ) -> dict[str, Any]:
     """Creates the profile for this email, or overwrites it if one already exists —
 
     the login flow is 'give your email, get your profile back', so signing up
     again with the same email is expected to just update it, not collide.
+    `password_hash` is only ever set here at creation (`brain1.identity.create`
+    hashes it first — this function never sees a plaintext password); passing
+    None on a later call leaves whatever hash is already stored untouched
+    (COALESCE), so a future profile-edit path can never accidentally wipe it.
     """
     with get_connection() as conn:
         existing = conn.execute('SELECT created_at FROM profiles WHERE email = ?', (email,)).fetchone()
         created_at = existing['created_at'] if existing else datetime.now(timezone.utc).isoformat()
         conn.execute(
-            'INSERT INTO profiles (email, full_name, dob, location, interests, other_interests, '
-            'photo_data_url, quote, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO profiles (email, full_name, password_hash, dob, location, interests, '
+            'other_interests, photo_data_url, quote, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT(email) DO UPDATE SET '
-            'full_name = excluded.full_name, dob = excluded.dob, location = excluded.location, '
+            'full_name = excluded.full_name, '
+            'password_hash = COALESCE(excluded.password_hash, profiles.password_hash), '
+            'dob = excluded.dob, location = excluded.location, '
             'interests = excluded.interests, other_interests = excluded.other_interests, '
             'photo_data_url = excluded.photo_data_url, quote = excluded.quote',
             (
                 email,
                 full_name,
+                password_hash,
                 dob,
                 location,
                 json.dumps(interests),
@@ -59,11 +67,12 @@ def upsert_profile(
 
 
 def set_understanding(email: str, mood_summary: str, context_notes: str, narrative_focus: str) -> None:
-    """Stores what ProfileAgent understood about this person from the conversation —
+    """Stores what Sensory Cortex understood about this person from the conversation —
 
-    every later SmartAgent call (reflect_moment, evolution_narrative, suggest_next_step)
-    for this profile pulls this back out and folds it into its own prompt, so the
-    understanding actually shapes what gets written from here on.
+    every later Prefrontal Cortex call (reflect_moment, evolution_narrative,
+    suggest_next_step) for this profile pulls this back out and folds it into
+    its own prompt, so the understanding actually shapes what gets written
+    from here on.
     """
     with get_connection() as conn:
         conn.execute(

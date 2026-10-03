@@ -112,6 +112,35 @@ def get_entry(profile_entry_id: str, profile_email: str) -> dict[str, Any] | Non
     return _row_to_dict(row) if row else None
 
 
+def list_domains(profile_email: str) -> list[str]:
+    """Distinct domains this profile has ever had a Profile entry drafted
+
+    for — used by `brain1.key_areas_overview` to fold in any custom domain
+    alongside the canonical starter set (ADD §6.1: "extensible per user").
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            'SELECT DISTINCT domain FROM profile_entries WHERE profile_email = ?',
+            (profile_email,),
+        ).fetchall()
+    return [row['domain'] for row in rows]
+
+
+def list_pending(profile_email: str) -> list[dict[str, Any]]:
+    """Every proposal, across every domain, currently waiting on Brain 1 to
+
+    accept/refine/reject — including proposals the Scheduler drafted on its
+    own while Brain 1 was away (ADD §8.2 step 1). This is the one list to
+    check for "does Brain 2 have anything to show me."
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM profile_entries WHERE profile_email = ? AND status = 'proposed' ORDER BY proposed_at DESC",
+            (profile_email,),
+        ).fetchall()
+    return [_row_to_dict(row) for row in rows]
+
+
 def get_accepted(profile_email: str, domain: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute(

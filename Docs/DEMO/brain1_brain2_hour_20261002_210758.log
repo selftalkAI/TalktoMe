@@ -1,0 +1,26 @@
+=== Brain 1 <-> Brain 2 simulation starting — 60 simulated day(s), log: /Users/sallasujitha/WorkSpace/selfie-me/Docs/DEMO/brain1_brain2_hour_20261002_210758.log ===
+Brain 1 (profile): User One — intention 'Gym', target 15 min/day, domain 'fitness'.
+  [t=  30.0s] heartbeat — day 1/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Just got back from the gym, did 5 min on the treadmill. Felt super sluggish, but I'm not giving up on my 15 min goal for the day. Need to get my morning routine on track, especially with the heat and humidity in Austin today.
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.
+  [t=  64.4s] heartbeat — day 2/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Haven't gotten any longer than 5 min today, still trying to get into the zone. This humidity is killing me while I'm on the treadmill
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.
+  [t=  97.1s] heartbeat — day 3/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): I know I said I was gonna push through today but honestly, I just couldn't get past 5 min again. Feeling a bit discouraged, Austin's heat isn't helping my motivation
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.
+  [t= 129.9s] heartbeat — day 4/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Man, I had my doubts again today. Did 5 minutes of meditation, just like yesterday. Still struggling to get it down to 15 minutes a day, but I guess it's not about the time, just showing up, right? 95 degrees outside and I'd have rather been on my bike, but I know that's not the point...
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.
+  [t= 164.7s] heartbeat — day 5/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Just made it to 6 min on the treadmill today, feeling a bit more energized after the morning coffee, but still struggling to get past the 10 min mark. Felt good to sweat out some frustration, though.
+BRAIN 2 (ack, no model call): logged 6min vs 15min target; consecutive shortfall streak=1.
+  [t= 198.0s] heartbeat — day 6/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Ugh, I know I'm not making progress like I want, but I just didn't feel it today. Went in for 5 minutes again, couldn't seem to muster up the motivation to stay for more, feeling kinda defeated after yesterday's 6 minutes, but still trying to tell myself 'small steps' and all that...
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.
+  [t= 232.5s] heartbeat — day 7/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Hey, just got back from the gym and I managed 6 minutes on the treadmill, but I have to admit, it felt like a struggle to get out the door today, still getting into the swing of things, and my legs are killing me from that 10-mile bike ride on Saturday!
+BRAIN 2 (ack, no model call): logged 6min vs 15min target; consecutive shortfall streak=1.
+  [t= 266.6s] heartbeat — day 8/60, target=15min, phase=struggling, consecutive_meets=0, proposals_accepted=0
+BRAIN 1 (User 1): Ugh, I know I was feeling pretty fired up about getting back on track, but today's 5 min was a total disappointment. I just couldn't get out of my own head and stay focused on my breathing like I did yesterday, even though it was only 6 min. Feels like I'm not making any progress at all.
+BRAIN 2 (ack, no model call): logged 5min vs 15min target; consecutive shortfall streak=1.

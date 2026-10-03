@@ -61,6 +61,19 @@ def get_active_intention(profile_email: str, domain: str) -> dict[str, Any] | No
     return dict(row) if row else None
 
 
+def list_active_intentions(profile_email: str) -> list[dict[str, Any]]:
+    """Every currently-active intention across every domain for this profile —
+
+    what `brain2/scheduler.py` iterates over on each recheck cycle.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM brain2_intentions WHERE profile_email = ? AND status = 'active' ORDER BY created_at DESC",
+            (profile_email,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def supersede_intention(intention_id: str, profile_email: str, new_target_minutes: int) -> dict[str, Any]:
     """A renegotiated target supersedes the old intention rather than mutating
 
@@ -70,7 +83,6 @@ def supersede_intention(intention_id: str, profile_email: str, new_target_minute
     old = get_intention(intention_id, profile_email)
     if old is None:
         raise KeyError(f'Unknown intention {intention_id} for {profile_email}')
-    now = datetime.now(timezone.utc).isoformat()
     with get_connection() as conn:
         conn.execute(
             'UPDATE brain2_intentions SET status = ? WHERE intention_id = ? AND profile_email = ?',
@@ -82,8 +94,7 @@ def supersede_intention(intention_id: str, profile_email: str, new_target_minute
 def log_checkin(intention_id: str, profile_email: str, checkin_date: str, minutes: int, note: str | None = None) -> dict[str, Any]:
     """Ground truth for one calendar day. Logging twice in a day accumulates
 
-    minutes rather than overwriting — never lossy, same rule as US-004's
-    `goal_logs`.
+    minutes rather than overwriting — never lossy.
     """
     now = datetime.now(timezone.utc).isoformat()
     with get_connection() as conn:

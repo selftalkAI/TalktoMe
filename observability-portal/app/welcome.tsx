@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Profile } from './onboarding';
 
 const API_BASE = 'http://localhost:8000';
 
-type Stage = 'opening' | 'listening' | 'understanding' | 'ready';
+type Stage = 'listening' | 'understanding' | 'ready';
 
 type ConversationResult = {
   welcome_message: string;
@@ -22,34 +22,13 @@ export default function Welcome({
   onContinue: () => void;
   onStartWithSuggestion: (suggestion: string) => void;
 }) {
-  const [stage, setStage] = useState<Stage>('opening');
-  const [openingMessage, setOpeningMessage] = useState('');
+  // No generated opening line here anymore — Thalamus's first-contact opener
+  // kept reading as generic ("I heard about X, I saw that Y...") no matter
+  // how the prompt was tuned; a clean, quiet prompt beats a mediocre one.
+  const [stage, setStage] = useState<Stage>('listening');
   const [responseText, setResponseText] = useState('');
   const [result, setResult] = useState<ConversationResult | null>(null);
   const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/api/v1/profiles/${encodeURIComponent(profile.email)}/conversation/open`, { method: 'POST' })
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => {
-        if (cancelled) return;
-        setOpeningMessage(data.opening_message);
-        setStage('listening');
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profile.email]);
-
-  // Best-effort only — the agent being unreachable must never block someone
-  // from reaching their own journal.
-  useEffect(() => {
-    if (failed) onContinue();
-  }, [failed, onContinue]);
 
   const submitResponse = async () => {
     if (!responseText.trim()) return;
@@ -74,13 +53,8 @@ export default function Welcome({
   return (
     <div className="onboarding-shell">
       <div className="onboarding-body welcome-body">
-        {stage === 'opening' && <p className="welcome-loading">Getting to know you…</p>}
-
-        {stage !== 'opening' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <p className="welcome-message">{openingMessage}</p>
-
-            <AnimatePresence mode="wait">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+          <AnimatePresence mode="wait">
               {stage === 'ready' && result ? (
                 <motion.div key="result" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
                   <p className="welcome-message welcome-followup">{result.welcome_message}</p>
@@ -132,8 +106,7 @@ export default function Welcome({
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
-        )}
+        </motion.div>
       </div>
     </div>
   );

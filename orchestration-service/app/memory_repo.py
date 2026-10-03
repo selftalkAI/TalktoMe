@@ -40,16 +40,17 @@ def create_memory(
     source_type: str | None = None,
     source_id: str | None = None,
     supersedes_id: str | None = None,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     memory_id = _new_id()
     now = datetime.now(timezone.utc).isoformat()
     with get_connection() as conn:
         conn.execute(
-            'INSERT INTO memories (memory_id, profile_email, type, content, explicitness, '
+            'INSERT INTO memories (memory_id, profile_email, type, domain, content, explicitness, '
             'confidence, sensitivity_tier, status, rationale_code, source_type, source_id, '
-            'supersedes_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'supersedes_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
-                memory_id, profile_email, memory_type, content, explicitness, confidence,
+                memory_id, profile_email, memory_type, domain, content, explicitness, confidence,
                 sensitivity_tier, status, rationale_code, source_type, source_id, supersedes_id,
                 now, now,
             ),
@@ -69,7 +70,10 @@ def get_memory(memory_id: str, profile_email: str) -> dict[str, Any] | None:
 
 
 def list_memories(
-    profile_email: str, status: str | None = ACTIVE, memory_type: str | None = None
+    profile_email: str,
+    status: str | None = ACTIVE,
+    memory_type: str | None = None,
+    domain: str | None = None,
 ) -> list[dict[str, Any]]:
     query = 'SELECT * FROM memories WHERE profile_email = ?'
     params: list[Any] = [profile_email]
@@ -79,10 +83,41 @@ def list_memories(
     if memory_type is not None:
         query += ' AND type = ?'
         params.append(memory_type)
+    if domain is not None:
+        query += ' AND domain = ?'
+        params.append(domain)
     query += ' ORDER BY created_at DESC'
     with get_connection() as conn:
         rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_domains(profile_email: str) -> list[str]:
+    """Distinct Profile domains (ADD §6.1) with at least one active memory —
+
+    what `brain2/scheduler.py` iterates over to find domains outside
+    goal-adherence that might be worth a Profile re-check.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            'SELECT DISTINCT domain FROM memories WHERE profile_email = ? AND status = ? AND domain IS NOT NULL',
+            (profile_email, ACTIVE),
+        ).fetchall()
+    return [row['domain'] for row in rows]
+
+
+def latest_active_created_at(profile_email: str, domain: str) -> str | None:
+    """Newest `created_at` among this domain's active memories, or None if
+
+    there are none — used to decide whether a domain has new information
+    since its Profile was last synthesized (`brain2/scheduler.py`).
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            'SELECT MAX(created_at) AS latest FROM memories WHERE profile_email = ? AND domain = ? AND status = ?',
+            (profile_email, domain, ACTIVE),
+        ).fetchone()
+    return row['latest'] if row and row['latest'] else None
 
 
 def find_duplicate(profile_email: str, memory_type: str, content: str) -> dict[str, Any] | None:
@@ -145,4 +180,5 @@ def correct_memory(memory_id: str, profile_email: str, new_content: str) -> dict
         source_type='correction',
         source_id=memory_id,
         supersedes_id=memory_id,
+        domain=old['domain'],
     )

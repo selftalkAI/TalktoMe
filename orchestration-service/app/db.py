@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS moments (
 CREATE TABLE IF NOT EXISTS profiles (
     email TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
+    password_hash TEXT,
     dob TEXT,
     location TEXT,
     interests TEXT,
@@ -44,6 +45,13 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- no history). A row here is typed, carries provenance, and is corrected by
 -- superseding (supersedes_id) rather than overwritten in place, so history is
 -- never destroyed (TDD §5.3).
+--
+-- `domain` is the shared join key to Brain 2's Profile Store (`profile_entries.
+-- domain`, ADD §6.1): an open string (skill/emotion/learning/reading/goal/...),
+-- independent of `type`, since the two are different taxonomies — `type` is
+-- what kind of statement this is, `domain` is which life area it belongs to.
+-- NULL means "not yet associated with a Profile domain," a valid state for
+-- ordinary facts/preferences that never feed a Profile refinement.
 CREATE TABLE IF NOT EXISTS memories (
     memory_id TEXT PRIMARY KEY,
     profile_email TEXT NOT NULL,
@@ -51,6 +59,7 @@ CREATE TABLE IF NOT EXISTS memories (
         'fact', 'preference', 'goal', 'relationship', 'event',
         'routine', 'constraint', 'project_context', 'user_instruction'
     )),
+    domain TEXT,
     content TEXT NOT NULL,
     explicitness TEXT NOT NULL CHECK (explicitness IN ('explicit', 'inferred')),
     confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
@@ -66,6 +75,9 @@ CREATE TABLE IF NOT EXISTS memories (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_memories_profile_status ON memories(profile_email, status);
+-- idx_memories_profile_domain_status is created in init_db(), after the
+-- `domain` migration below — creating it here would fail on a pre-existing
+-- DB where this CREATE TABLE is a no-op and `domain` doesn't exist yet.
 
 -- General RAG knowledge sources (ADD "Files and ingestion" domain) — distinct
 -- from `memories` (governed facts about the person) and `moments` (their own
@@ -92,39 +104,6 @@ CREATE TABLE IF NOT EXISTS rag_chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_document ON rag_chunks(document_id);
 
--- Trackable goals (US-004) — distinct from a free-text `memories` row of
--- type='goal': this carries the progress-tracking fields (streak, nudge
--- state) a durable memory record has no place for. A correction supersedes
--- rather than mutates in place, same pattern as `memories.supersedes_id`.
-CREATE TABLE IF NOT EXISTS goals (
-    goal_id TEXT PRIMARY KEY,
-    profile_email TEXT NOT NULL,
-    title TEXT NOT NULL,
-    target_minutes INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'deleted')),
-    state TEXT NOT NULL DEFAULT 'on_track' CHECK (state IN ('on_track', 'renegotiation_offered', 'adjusted')),
-    current_streak_under_target INTEGER NOT NULL DEFAULT 0,
-    last_evaluated_date TEXT,
-    last_nudged_date TEXT,
-    pending_nudge_message TEXT,
-    pending_nudge_suggested_target INTEGER,
-    supersedes_goal_id TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_goals_profile_status ON goals(profile_email, status);
-
--- Ground-truth adherence log for a goal — the LLM's grounding data (US-004);
--- never inferred from conversation, always a deterministic write.
-CREATE TABLE IF NOT EXISTS goal_logs (
-    goal_id TEXT NOT NULL,
-    profile_email TEXT NOT NULL,
-    log_date TEXT NOT NULL,
-    actual_minutes INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (goal_id, log_date)
-);
-
 -- Brain 2's Profile Store (ADD §6.1 / TDD §21): a versioned, per-domain
 -- synthesis of who Brain 1 (the user) is in that domain — a skill, an
 -- emotion, a relationship, a habit, any part of the complete human persona.
@@ -150,7 +129,7 @@ CREATE INDEX IF NOT EXISTS idx_profile_entries_email_domain_status
 -- before being trackable — the reflection gate applies to relayed content
 -- (an article, a habit merely described), not to a person's own stated goal.
 -- Adjusting the target supersedes rather than mutates, same pattern as
--- `goals`/`memories`.
+-- `memories`.
 CREATE TABLE IF NOT EXISTS brain2_intentions (
     intention_id TEXT PRIMARY KEY,
     profile_email TEXT NOT NULL,
@@ -165,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_brain2_intentions_email_domain_status
     ON brain2_intentions(profile_email, domain, status);
 
 -- Ground-truth daily check-ins against an intention — never inferred, always
--- a deterministic write, same spirit as `goal_logs`.
+-- a deterministic write.
 CREATE TABLE IF NOT EXISTS brain2_checkins (
     intention_id TEXT NOT NULL,
     profile_email TEXT NOT NULL,
@@ -195,9 +174,16 @@ def init_db() -> None:
         conn.execute('CREATE INDEX IF NOT EXISTS idx_moments_profile_email ON moments(profile_email)')
 
         profile_cols = {row['name'] for row in conn.execute('PRAGMA table_info(profiles)').fetchall()}
-        for column in ('narrative_focus', 'mood_summary', 'context_notes'):
+        for column in ('narrative_focus', 'mood_summary', 'context_notes', 'password_hash'):
             if column not in profile_cols:
                 conn.execute(f'ALTER TABLE profiles ADD COLUMN {column} TEXT')
+
+        memory_cols = {row['name'] for row in conn.execute('PRAGMA table_info(memories)').fetchall()}
+        if 'domain' not in memory_cols:
+            conn.execute('ALTER TABLE memories ADD COLUMN domain TEXT')
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_memories_profile_domain_status ON memories(profile_email, domain, status)'
+        )
 
 
 @contextmanager

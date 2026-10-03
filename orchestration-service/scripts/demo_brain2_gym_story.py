@@ -70,10 +70,11 @@ def main() -> None:
 
     proposal = orchestrator.propose_refinement(
         profile_email=PROFILE_EMAIL,
+        domain=result['intention']['domain'],
+        user_reflection=user_reflection,
         intention=result['intention'],
         streak=result['streak'],
         support_message=support['message'],
-        user_reflection=user_reflection,
     )
     line('BRAIN 2 (proposes, does not write)', f"Profile draft for domain '{proposal['domain']}' (v{proposal['version']}, status={proposal['status']}):")
     print(f"    {proposal['content']}")
