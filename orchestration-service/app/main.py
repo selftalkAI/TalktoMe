@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field
 from . import brain1, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
 from .brain1 import here_now as brain1_here_now
 from .brain1 import persona_selector
+from .brain1 import learning as brain1_learning
 from .brain1 import profile as brain1_profile
+from .brain1 import reflector as brain1_reflector
 from .brain1 import runs as brain1_runs
 from .brain1 import safety as brain1_safety
 from .brain2 import intentions_repo as brain2_intentions_repo
@@ -379,6 +381,15 @@ def brain1_get_profile(email: str) -> dict[str, Any]:
         'here_now': brain1_here_now.compute(person.get('location')),
         'version': (saved or latest or {}).get('version'),
     }
+
+
+@app.post('/api/v1/brain1/{email}/reflect')
+def brain1_reflect(email: str) -> dict[str, Any]:
+    """Runs Brain 1's reflection now (it also runs nightly): turns what has
+    worked — or not — into visible "what works for them" memories."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    return {**brain1_reflector.run_for_profile(email), 'learned': brain1_learning.weights(email)}
 
 
 @app.get('/api/v1/brain1/{email}/runs/{run_id}')

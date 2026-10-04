@@ -51,10 +51,17 @@ _FITNESS_DOMAINS = ('fitness', 'gym', 'exercise', 'health', 'running', 'sport', 
 _FEELING_DOMAINS = ('emotion', 'emotions', 'feelings', 'stress', 'mood', 'mental')
 
 
-def select(profile_email: str, domain: str, latest_message: str, reading: dict[str, Any]) -> dict[str, str]:
+def select(
+    profile_email: str,
+    domain: str,
+    latest_message: str,
+    reading: dict[str, Any],
+    avoid_voices: set[str] | frozenset[str] = frozenset(),
+) -> dict[str, str]:
     """Returns `{'voice', 'expertise', 'source'}` for this reply. A voice
     request in `latest_message` is recorded first, so it applies to the very
-    reply that answers it."""
+    reply that answers it. `avoid_voices` are voices that have repeatedly
+    landed badly with this person (learning.py) — skipped unless she chose it."""
     _record_request(profile_email, latest_message)
     blocked = blocked_voices(profile_email)
     preferred = preferred_voice(profile_email)
@@ -63,8 +70,9 @@ def select(profile_email: str, domain: str, latest_message: str, reading: dict[s
         voice, source = preferred, 'her_choice'
     else:
         voice, source = _voice_for_moment(domain, reading), 'selected'
-        if voice in blocked:
-            voice = DEFAULT_VOICE
+        unavailable = blocked | set(avoid_voices)
+        if voice in unavailable:
+            voice = next((v for v in (DEFAULT_VOICE, 'coach', 'big_sister', 'big_brother') if v not in unavailable), DEFAULT_VOICE)
 
     return {'voice': voice, 'expertise': _expertise_for(domain, reading), 'source': source}
 

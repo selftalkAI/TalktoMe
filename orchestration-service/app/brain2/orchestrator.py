@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .. import memory_repo, profiles_repo
+from ..brain1 import learning as brain1_learning
 from ..brain1 import profile as brain1_profile
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import coach, intentions_repo, profile_store
@@ -273,8 +274,11 @@ def _fallback_profile_content(domain: str, user_reflection: str, intention: dict
 
 
 def accept_proposal(profile_entry_id: str, profile_email: str) -> dict[str, Any]:
-    """The one and only path to a durable Profile write. See `profile_store.accept`."""
-    return profile_store.accept(profile_entry_id, profile_email)
+    """The one and only path to a durable Profile write. See `profile_store.accept`.
+    Acceptance is also a learning signal for the reply that led to it."""
+    accepted = profile_store.accept(profile_entry_id, profile_email)
+    brain1_learning.record_for_latest_run(profile_email, 'accepted')
+    return accepted
 
 
 def refine_proposal(

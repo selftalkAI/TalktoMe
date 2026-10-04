@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from .. import profiles_repo
-from ..brain1 import context_pack, core_engine, knowledge, persona_selector, runs, safety
+from ..brain1 import context_pack, core_engine, knowledge, learning, persona_selector, runs, safety
 from ..config import settings
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import plan_rules
@@ -72,7 +72,18 @@ def reply(
     turn = _Turn(profile_email, pack, conversation, latest_message)
 
     reading = turn.understand() if trigger == 'message' else {}
-    turn.persona = persona or persona_selector.select(profile_email, domain, latest_message, reading)
+    # Learned layer: their move now scores Brain 2's previous reply, then what has
+    # (not) worked for them shapes this one (Building_Brain1.md §9.5).
+    if trigger == 'message':
+        learning.score_previous_turn(profile_email, reading=reading)
+    else:
+        learning.score_previous_turn(profile_email, outcome='silence')
+    learned = learning.weights(profile_email)
+    avoid, prefer = learning.avoided(profile_email, learned), learning.preferred(profile_email, learned)
+    works = learning.works_text(profile_email)
+    if works:
+        turn.public_pack['works'] = works
+    turn.persona = persona or persona_selector.select(profile_email, domain, latest_message, reading, avoid['voices'])
     if level == safety.CONCERN:
         # Safety overrides every persona and plan: gentle listening only (FSD FR-PER-007).
         turn.persona = {'voice': 'mother_like', 'expertise': 'mind_emotions', 'source': 'safety'}
@@ -82,10 +93,17 @@ def reply(
         if trigger == 'message' and settings.brain1_cores_mode == 'reactive':
             core_engine.run_cores(profile_email, domain, latest_message, reading)
         turn.public_pack['understanding'] = _understanding(profile_email)
-        turn.cards = knowledge.select(reading, latest_message, domain, level) if trigger == 'message' else []
+        turn.cards = (
+            knowledge.select(reading, latest_message, domain, level, avoid_ids=avoid['cards'], prefer_ids=prefer['cards'])
+            if trigger == 'message'
+            else []
+        )
         turn.public_pack['principles'] = knowledge.as_text(turn.cards)
         decided = turn.decide(reading) if trigger == 'message' else {}
-        plan = plan_rules.apply(decided, reading, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level)
+        plan = plan_rules.apply(
+            decided, reading, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level,
+            avoid_stances=avoid['stances'],
+        )
     if persona_selector.detect_request(latest_message) not in (None, 'clear'):
         plan['words'] += (
             '\nThey just asked you to change how you talk to them. Agree warmly in your new voice in one short '

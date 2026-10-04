@@ -46,10 +46,19 @@ def _as_text_lists(conditions: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def select(
-    reading: dict[str, Any], message: str, domain: str, safety_level: str = 'ok', limit: int = MAX_CARDS
+    reading: dict[str, Any],
+    message: str,
+    domain: str,
+    safety_level: str = 'ok',
+    limit: int = MAX_CARDS,
+    *,
+    avoid_ids: set[str] | frozenset[str] = frozenset(),
+    prefer_ids: set[str] | frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """The cards that fit this moment, best first. A card's `avoid_when`
-    always wins; a `did_it_today` condition must match exactly."""
+    always wins; a `did_it_today` condition must match exactly. `avoid_ids`
+    and `prefer_ids` come from what has (not) worked for this person
+    (learning.py): avoided cards are skipped, preferred ones get a nudge."""
     text = (message or '').lower()
     reason = f"{reading.get('reason_given') or ''} {text}".lower()
     feeling = (reading.get('feeling') or '').lower()
@@ -57,6 +66,8 @@ def select(
     scored: list[tuple[int, int, dict[str, Any]]] = []
     for order, card in enumerate(cards()):
         when, avoid = card.get('use_when') or {}, card.get('avoid_when') or {}
+        if card['id'] in avoid_ids:
+            continue
         if safety_level in (avoid.get('safety') or []):
             continue
         if any(_has_word(reason, w) for w in avoid.get('reason_words') or []):
@@ -78,7 +89,7 @@ def select(
         if (domain or '').lower() in (when.get('domains') or []):
             score += 1
         if score >= MIN_SCORE:
-            scored.append((score, -order, card))
+            scored.append((score + (1 if card['id'] in prefer_ids else 0), -order, card))
 
     scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
     return [card for _, _, card in scored[:limit]]

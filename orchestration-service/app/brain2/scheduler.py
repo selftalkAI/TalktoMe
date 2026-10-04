@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from .. import memory_repo, profiles_repo
+from ..brain1 import reflector as brain1_reflector
 from . import intentions_repo, orchestrator, profile_store
 
 logger = logging.getLogger(__name__)
@@ -45,10 +46,13 @@ def run_for_profile(profile_email: str) -> list[dict[str, Any]]:
     than waiting for the next scheduled cycle (ADD §1.1, §8.2).
     """
     try:
-        return _recheck_profile(profile_email)
+        drafted = _recheck_profile(profile_email)
     except Exception:
         logger.exception('Brain 2 Scheduler: recheck failed for %s', profile_email)
-        return []
+        drafted = []
+    # Brain 1's nightly reflection rides the same cycle (Building_Brain1.md §14.3).
+    brain1_reflector.run_for_profile(profile_email)
+    return drafted
 
 
 def _recheck_profile(profile_email: str) -> list[dict[str, Any]]:

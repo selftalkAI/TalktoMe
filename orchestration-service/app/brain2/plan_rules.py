@@ -49,6 +49,7 @@ def apply(
     trigger: str = 'message',
     checkin_mode: bool = False,
     escalation_level: int = 0,
+    avoid_stances: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Returns the final plan: `stance`, `moves`, `question`, `idea`, and
     `words` (the plan in plain language for the Speak prompt)."""
@@ -56,6 +57,9 @@ def apply(
         return _proactive_plan(escalation_level)
 
     stance = decided.get('stance') if decided.get('stance') in STANCES else _default_stance(reading, checkin_mode)
+    if stance in avoid_stances:  # it has repeatedly landed badly with this person (learning.py)
+        stance = 'listen' if 'listen' not in avoid_stances else 'ask'
+        decided = {**decided, 'moves': []}
     moves = [m for m in decided.get('moves') or [] if m in MOVES][:2]
     question = decided.get('question') or None
     idea = decided.get('idea') or None
