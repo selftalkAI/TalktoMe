@@ -43,6 +43,14 @@ class Settings:
         # reply benefits (default on a local model), 'off' disables them.
         self.brain1_cores_mode: str = os.getenv('BRAIN1_CORES_MODE', 'background').strip().lower()
         self.brain1_core_max_steps: int = max(1, int(os.getenv('BRAIN1_CORE_MAX_STEPS', '3')))
+        # Brain 1 proactive check-ins (Building_Brain1.md §14.3): how long a conversation waits on
+        # them before Brain 1 even considers reaching out, and the most check-ins per day.
+        self.brain1_proactive_enabled: bool = os.getenv('BRAIN1_PROACTIVE_ENABLED', 'true').lower() == 'true'
+        self.brain1_checkin_after_hours: float = float(os.getenv('BRAIN1_CHECKIN_AFTER_HOURS', '20'))
+        self.brain1_max_checkins_per_day: int = int(os.getenv('BRAIN1_MAX_CHECKINS_PER_DAY', '1'))
+        # Brain 1 Safety Core: a small-model second layer after the keyword rules — it can only
+        # raise the level, never lower it (Building_Brain1.md §13).
+        self.brain1_safety_model_enabled: bool = os.getenv('BRAIN1_SAFETY_MODEL_ENABLED', 'true').lower() == 'true'
 
 
 settings = Settings()

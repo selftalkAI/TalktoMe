@@ -11,10 +11,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import brain1, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from . import brain1, conversations_repo, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
 from .brain1 import here_now as brain1_here_now
 from .brain1 import persona_selector
 from .brain1 import learning as brain1_learning
+from .brain1 import proactive as brain1_proactive
 from .brain1 import profile as brain1_profile
 from .brain1 import reflector as brain1_reflector
 from .brain1 import runs as brain1_runs
@@ -47,6 +48,10 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
             id='brain2_recheck',
             next_run_time=datetime.now(timezone.utc),  # also run one pass immediately on startup
         )
+        if settings.brain1_proactive_enabled:
+            # Brain 1's proactive check-ins: every 30 minutes Brain 1 looks at conversations waiting on
+            # someone and decides — by explicit rules — whether reaching out would help.
+            _brain2_background_scheduler.add_job(brain1_proactive.run_cycle, 'interval', minutes=30, id='brain1_proactive')
         _brain2_background_scheduler.start()
         logger.info(
             'Brain 2 Scheduler started: rechecking every %s hour(s)', settings.brain2_recheck_interval_hours
@@ -357,12 +362,22 @@ def brain_turn(email: str, payload: ConversationTurnIn) -> dict[str, Any]:
     proposal awaiting her acceptance (ADR-022)."""
     if profiles_repo.get_profile(email) is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
-    if brain1_safety.assess(payload.message)['level'] != brain1_safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
+    intention = brain2_intentions_repo.get_active_intention(email, payload.domain)
+    conversation = payload.conversation or conversations_repo.as_messages(conversations_repo.current_session(email, payload.domain))
+    turn = brain2.converse(email, payload.domain, payload.message, conversation=conversation, intention=intention)
+    if turn['safety'] != brain1_safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
         memory_manager.remember_from_text(
             profile_email=email, source_text=payload.message, source_type='conversation', source_id=f'turn-{payload.domain}'
         )
-    intention = brain2_intentions_repo.get_active_intention(email, payload.domain)
-    return brain2.converse(email, payload.domain, payload.message, conversation=payload.conversation, intention=intention)
+    return turn
+
+
+@app.get('/api/v1/brain/{email}/conversation')
+def brain_conversation(email: str, domain: str | None = Query(None), limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
+    """The stored conversation, oldest first — including Brain 2's proactive check-ins (`proactive: 1`)."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    return conversations_repo.history(email, domain, limit)
 
 
 @app.get('/api/v1/brain1/{email}/profile')

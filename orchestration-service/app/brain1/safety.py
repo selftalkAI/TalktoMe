@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
+
+from ..config import settings
+from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 
 # Brain 1's Safety Core (Building_Brain1.md §13; FSD FR-B1-011, FR-SAFE-008).
 # Runs first on every message, before anything else in Brain 1 or Brain 2.
@@ -68,3 +72,28 @@ def care_message(first_name: str, location: str | None) -> str:
         f'person right now — {line}. If you might act on these feelings, call {emergency}. '
         "I'm here with you too. Are you safe right now?"
     )
+
+
+_ORDER = {OK: 0, CONCERN: 1, CRISIS: 2}
+
+
+def assess_deep(profile_email: str, message: str) -> dict[str, Any]:
+    """Rules first; then, unless they already found a crisis, the small-model
+    check (Agentic Service `amygdala.safety_check`) for distress the rules
+    miss. The model can only RAISE the level — a model saying "ok" never
+    overrides a rule's concern — and if it is unavailable the rules stand."""
+    rules = assess(message)
+    if rules['level'] == CRISIS or not (message or '').strip() or not settings.brain1_safety_model_enabled:
+        return {**rules, 'source': 'rules'}
+    try:
+        run = AgenticServiceClient().create_agent_run(
+            'amygdala', user_id=profile_email, goal=json.dumps({'operation': 'safety_check', 'message': message})
+        )
+    except AgenticServiceError:
+        return {**rules, 'source': 'rules'}
+    steps = run.get('steps') or []
+    result = steps[0].get('result') if run.get('status') == 'completed' and steps else None
+    level = result.get('level') if isinstance(result, dict) and result.get('level') in _ORDER else OK
+    if _ORDER[level] > _ORDER[rules['level']]:
+        return {'level': level, 'matched': result.get('reason'), 'source': 'model'}
+    return {**rules, 'source': 'rules'}

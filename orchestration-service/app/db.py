@@ -218,6 +218,21 @@ CREATE TABLE IF NOT EXISTS brain1_area_summaries (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_brain1_area_summaries ON brain1_area_summaries(profile_email, core, created_at);
+-- The conversation itself (ADD §25 Conversation domain): every message and
+-- Brain 2 reply, so threads survive restarts, episodes can be summarised, and
+-- proactive check-ins have somewhere to be delivered. T2 personal data.
+CREATE TABLE IF NOT EXISTS conversation_turns (
+    turn_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    run_id TEXT,
+    proactive INTEGER NOT NULL DEFAULT 0,
+    episode_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conversation_turns ON conversation_turns(profile_email, domain, created_at);
 """
 
 

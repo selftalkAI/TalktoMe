@@ -56,6 +56,9 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     )
     monkeypatch.setattr(orchestrator.brain1_profile, 'build', lambda email: {'sections': {}})
     monkeypatch.setattr(orchestrator.brain1_profile, 'save_version', lambda *a, **k: None)
+    monkeypatch.setattr(orchestrator.conversations_repo, 'current_session', lambda *a, **k: [])
+    monkeypatch.setattr(orchestrator.conversations_repo, 'unsummarised', lambda *a, **k: [])
+    monkeypatch.setattr(orchestrator.conversations_repo, 'append', lambda *a, **k: {})
     drafts: list[str] = []
     monkeypatch.setattr(orchestrator, '_run_broca', lambda email, payload: drafts.pop(0) if drafts else '')
     return {'store': store, 'memories': memories, 'drafts': drafts}

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .. import memory_repo, profiles_repo
+from .. import conversations_repo, memory_repo, profiles_repo
+from ..brain1 import episodes as brain1_episodes
 from ..brain1 import learning as brain1_learning
 from ..brain1 import profile as brain1_profile
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
@@ -142,6 +143,11 @@ def converse(
     is the thread so far as real turns, not including `message`.
     """
     checkins = intentions_repo.list_checkins(intention['intention_id'], profile_email) if intention else None
+    session = conversations_repo.current_session(profile_email, domain)
+    if trigger == 'message':
+        if not session and conversations_repo.unsummarised(profile_email, domain):
+            brain1_episodes.consolidate_in_background(profile_email, domain)  # the last session just ended
+        conversations_repo.append(profile_email, domain, 'user', message)
     result = coach.reply(
         profile_email,
         domain,
@@ -155,6 +161,8 @@ def converse(
         checkin_mode=checkin_mode,
         escalation_level=escalation_level,
     )
+    conversations_repo.append(profile_email, domain, 'assistant', result['content'], run_id=result.get('run_id'),
+                              proactive=trigger != 'message')
     proposal = None
     if trigger == 'message' and result['safety'] == 'ok' and _learned_something_lasting(profile_email, domain, result['reading'], intention):
         proposal = propose_refinement(profile_email, domain, message, intention=intention, streak=streak)

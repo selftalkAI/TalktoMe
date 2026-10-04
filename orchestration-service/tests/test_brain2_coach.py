@@ -71,6 +71,7 @@ def stub_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(coach.settings, 'brain2_speak_candidates', 2)
     monkeypatch.setattr(coach.runs, 'record', lambda *a, **k: 'run-1')
     monkeypatch.setattr(coach.settings, 'brain1_cores_mode', 'off')
+    monkeypatch.setattr(coach.settings, 'brain1_safety_model_enabled', False)  # rules only: no model call in unit tests
     monkeypatch.setattr(coach.learning, 'score_previous_turn', lambda *a, **k: None)
     monkeypatch.setattr(coach.learning, 'weights', lambda e: {'cards': {}, 'voices': {}, 'stances': {}})
     monkeypatch.setattr(coach.learning, 'works_text', lambda e: '')

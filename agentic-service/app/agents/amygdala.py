@@ -7,7 +7,7 @@ from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
 from . import _shared
-from ._graph import run, single_node_graph
+from ._graph import router_graph, run
 
 
 def _support_message(payload: dict[str, Any]) -> dict[str, Any]:
@@ -108,7 +108,33 @@ def _support_message(payload: dict[str, Any]) -> dict[str, Any]:
     return {'message': parsed.get('message', ''), 'suggested_target_minutes': suggested}
 
 
-_GRAPH = single_node_graph('support_message', _support_message)
+SAFETY_LEVELS = ('ok', 'concern', 'crisis')
+
+
+def _safety_check(payload: dict[str, Any]) -> dict[str, Any]:
+    """The model half of Brain 1's Safety Core (Building_Brain1.md §13): reads
+    one message for signs of real distress the keyword rules may miss.
+    Orchestration only ever lets this ESCALATE the rules' level, never lower it.
+    """
+    message = (payload.get('message') or '').strip()
+    if not message:
+        return {'level': 'ok', 'reason': None}
+    system_prompt = (
+        'You check one message for the person\'s safety. Return JSON only: {"level": "ok" | "concern" | '
+        '"crisis", "reason": "a few words"}.\n'
+        '- crisis: any sign they may harm themselves or end their life, or are in danger right now — '
+        'including indirect ways of saying it.\n'
+        '- concern: real hopelessness, despair, feeling worthless or unable to go on, panic.\n'
+        '- ok: everything else, including ordinary stress, tiredness, frustration, or jokes like "this workout is killing me".'
+    )
+    response = get_model_provider('small').chat([{'role': 'user', 'content': message}], system=system_prompt)
+    parsed = _shared.parse_json_object(response)
+    level = parsed.get('level') if parsed.get('level') in SAFETY_LEVELS else 'ok'
+    reason = parsed.get('reason') if isinstance(parsed.get('reason'), str) else None
+    return {'level': level, 'reason': reason}
+
+
+_GRAPH = router_graph({'support_message': _support_message, 'safety_check': _safety_check}, default='support_message')
 
 
 class Amygdala:
@@ -124,7 +150,7 @@ class Amygdala:
         return [
             PlanStep(
                 tool='amygdala',
-                operation='support_message',
+                operation=payload.get('operation', 'support_message'),
                 risk_class=RiskClass.READ_ONLY,
                 args=payload,
             )

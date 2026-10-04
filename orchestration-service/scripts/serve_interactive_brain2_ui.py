@@ -41,7 +41,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import brain1, memory_manager, memory_repo  # noqa: E402
-from app.brain1 import safety  # noqa: E402
+from app import conversations_repo  # noqa: E402
+from app.brain1 import proactive, safety  # noqa: E402
 from app.brain2 import intentions_repo, orchestrator  # noqa: E402
 from app.spinal_cord import AgenticServiceClient, AgenticServiceError  # noqa: E402
 
@@ -187,14 +188,6 @@ def _process_turn(text: str, domain: str) -> None:
     # reads them back as `domain_memories`. Without this call that grounding
     # was always empty, no matter what the person revealed. Best-effort —
     # `remember_from_text` never raises, so this can't block the turn.
-    if safety.assess(text)['level'] != safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
-        memory_manager.remember_from_text(
-            profile_email=PROFILE_EMAIL,
-            source_text=text,
-            source_type='conversation',
-            source_id=f'{domain}-{len(THREAD)}',
-            full_name=PROFILE_FACTS['full_name'],
-        )
 
     minutes = None
     streak = None
@@ -243,6 +236,14 @@ def _process_turn(text: str, domain: str) -> None:
     _append('brain2', turn['reply'], persona=turn['persona'], domain=domain)
     AWAITING.add(domain)
     _offer_proposal(turn['proposal'], domain)
+    if turn['safety'] != safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
+        memory_manager.remember_from_text(
+            profile_email=PROFILE_EMAIL,
+            source_text=text,
+            source_type='conversation',
+            source_id=f'{domain}-{len(THREAD)}',
+            full_name=PROFILE_FACTS['full_name'],
+        )
 
     if (
         domain == GOAL_DOMAIN
@@ -344,6 +345,15 @@ def _process_auto_nudge() -> bool:
     start = (candidates.index(_LAST_NUDGED_DOMAIN) + 1) % len(candidates) if _LAST_NUDGED_DOMAIN in candidates else 0
     domain = candidates[start]
     _LAST_NUDGED_DOMAIN = domain
+    # Brain 1 decides whether reaching out helps (Building_Brain1.md §14.3). This demo uses its own
+    # idle timer instead of the hours-long wait and daily cap, and ignores quiet hours so it works at night.
+    waiting = next((w for w in conversations_repo.domains_awaiting_reply(PROFILE_EMAIL) if w['domain'] == domain), None)
+    if waiting is not None:
+        decision = proactive.decide(PROFILE_EMAIL, waiting, respect_timing=False, respect_quiet_hours=False)
+        if not decision['reach_out']:
+            AWAITING.discard(domain)
+            _append('system', f"Brain 1 ({domain}): not checking in — {decision['reason']}.", domain=domain)
+            return True
 
     history = _domain_turns(domain)
     escalation_level = ESCALATION.get(domain, 0)

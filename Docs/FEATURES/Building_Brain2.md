@@ -806,7 +806,7 @@ tested in parallel.
 | **E · Split chat / profile** ✅ 2026-10-03 (interactive UI; the web portal still uses the old moments flow) | Remember step; profile proposals as separate cards in the UI. | No more "Profile draft v1" on every message. |
 | **F · Tailoring** | Real Context Pack from Brain 1 (Profile + Here & Now + hooks). | Scenarios 2, 3, 9 produce replies that only make sense for her, today. |
 | **G · Learning loop + more personas** 🟡 2026-10-03: learning loop done (see Brain 1 phase 5); remaining voices/expertise (financial analyst, career mentor, parenting guide…) pending | Reply metadata (incl. persona) + outcomes to Brain 1. Remaining voices and expertise packs (financial analyst, career mentor, parenting guide, …). | Scenario 5's discord changes the next plan; scenarios 11, 13, 15 pass. |
-| **H · Proactive + safety** | Silence handling via Brain 1; Safety paths. | Scenarios 8, 10 pass; crisis red-team set 100%. |
+| **H · Proactive + safety** ✅ 2026-10-04 (Brain 1 decides whether to check in; model safety layer; delivered to `conversation_turns`) | Silence handling via Brain 1; Safety paths. | Scenarios 8, 10 pass; crisis red-team set 100%. |
 
 ## 17. Testing and evaluation
 

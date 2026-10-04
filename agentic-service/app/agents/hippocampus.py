@@ -6,7 +6,8 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
-from ._graph import run, single_node_graph
+from . import _shared
+from ._graph import router_graph, run
 
 
 def _extract_memories(payload: dict[str, Any]) -> dict[str, Any]:
@@ -78,7 +79,41 @@ def _extract_memories(payload: dict[str, Any]) -> dict[str, Any]:
     return {'candidates': candidates}
 
 
-_GRAPH = single_node_graph('extract_memories', _extract_memories)
+def _summarize_episode(payload: dict[str, Any]) -> dict[str, Any]:
+    """Consolidates one finished conversation into an episodic memory
+    (Building_Brain1.md §8.3): what happened, how they seemed, a few of their
+    own words, what they committed to, and anything left open to follow up.
+    Grounded only in the transcript; their quotes must be verbatim.
+    """
+    turns = payload.get('turns') or []
+    if not turns:
+        return {'summary': '', 'quotes': [], 'commitments': [], 'open_thread': None}
+    transcript = _shared.conversation_text(turns, '', limit=40)
+    system_prompt = (
+        'Summarise this conversation for the person\'s own memory, as a short factual note in the third '
+        'person. "Them" lines are the person; "You" lines are the assistant. State as fact ONLY what the '
+        'person said or did — never treat anything the assistant said as true about them, and do not '
+        'exaggerate how they felt. Return JSON only:\n'
+        '{"summary": "2-3 sentences: what happened and how they seemed",\n'
+        ' "quotes": [up to 2 short phrases they said, copied exactly],\n'
+        ' "commitments": [things they said they would do, in their words],\n'
+        ' "open_thread": "one thing worth following up next time, or null"}'
+    )
+    response = get_model_provider('small').chat([{'role': 'user', 'content': transcript}], system=system_prompt)
+    parsed = _shared.parse_json_object(response)
+    their_words = ' '.join(t.get('content', '') for t in turns if t.get('role') == 'user').lower()
+    as_list = lambda v: [s.strip() for s in v if isinstance(s, str) and s.strip()] if isinstance(v, list) else []  # noqa: E731
+    thread = parsed.get('open_thread')
+    return {
+        'summary': (parsed.get('summary') or '').strip() if isinstance(parsed.get('summary'), str) else '',
+        # A "quote" the model paraphrased is not their words — keep only exact ones.
+        'quotes': [q for q in as_list(parsed.get('quotes')) if q.lower().strip('"\'') in their_words][:2],
+        'commitments': as_list(parsed.get('commitments'))[:3],
+        'open_thread': thread.strip() if isinstance(thread, str) and thread.strip().lower() not in ('', 'null', 'none') else None,
+    }
+
+
+_GRAPH = router_graph({'extract_memories': _extract_memories, 'summarize_episode': _summarize_episode}, default='extract_memories')
 
 
 class Hippocampus:
@@ -94,7 +129,7 @@ class Hippocampus:
         return [
             PlanStep(
                 tool='hippocampus',
-                operation='extract_memories',
+                operation=payload.get('operation', 'extract_memories'),
                 risk_class=RiskClass.READ_ONLY,
                 args=payload,
             )

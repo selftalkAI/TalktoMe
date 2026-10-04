@@ -55,7 +55,7 @@ def reply(
     """
     started = time.monotonic()
     conversation = conversation or []
-    level = safety.assess(latest_message)['level'] if trigger == 'message' else safety.OK
+    level = safety.assess_deep(profile_email, latest_message)['level'] if trigger == 'message' else safety.OK
 
     if level == safety.CRISIS:
         # No coaching, no model: the reviewed care message (Building_Brain1.md §13).
