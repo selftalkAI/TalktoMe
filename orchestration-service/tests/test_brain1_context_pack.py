@@ -56,3 +56,11 @@ def test_unknowns_are_offered_as_optional_questions(sam: None) -> None:
 def test_numbers_and_days_in_the_pack_are_allowed_in_replies(sam: None) -> None:
     allowed = context_pack.compile(EMAIL, 'fitness')['allowed_text']
     assert 'Monday' in allowed and '9' in allowed
+
+
+def test_facts_from_other_areas_stay_out(sam: None) -> None:
+    memory_repo.create_memory(profile_email=EMAIL, memory_type='routine', content='Gym at 6am, 35 minutes', explicitness='explicit',
+                              confidence=0.9, sensitivity_tier='T2', status='active', domain='fitness')
+    assert 'Gym at 6am' not in context_pack.compile(EMAIL, 'career')['loves']
+    assert 'Gym at 6am' in context_pack.compile(EMAIL, 'fitness')['loves']
+    assert 'black coffee' in context_pack.compile(EMAIL, 'career')['loves']  # general facts still shared

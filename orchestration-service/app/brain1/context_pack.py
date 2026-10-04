@@ -50,7 +50,7 @@ def compile(  # noqa: A001 - the pack is "compiled", per the spec's vocabulary
         'who': _lines(sections['identity'] + sections['people'] + _communication(sections), MAX_WHO),
         'goal': _goal(intention, checkins or [], streak),
         'today': here_now.describe(now),
-        'loves': _lines(_relevant_first([f for s in _LIFE_SECTIONS for f in sections[s]], domain), MAX_LIFE_FACTS),
+        'loves': _lines(_relevant_to(domain, [f for s in _LIFE_SECTIONS for f in sections[s]]), MAX_LIFE_FACTS),
         'story': _story(profile_email, domain, sections['story'], support_message),
         'works': _lines(sections['what_works'], MAX_LIFE_FACTS),
         'hooks': _hooks(now, [f for s in _HOOK_SECTIONS for f in sections[s]]),
@@ -73,8 +73,11 @@ def _lines(fields: list[dict[str, Any]], limit: int, prefix: str = '') -> str:
     return '\n'.join(f'- {prefix}{v}' for v in seen[:limit])
 
 
-def _relevant_first(fields: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
-    return sorted(fields, key=lambda f: (f.get('area') or '') != domain)
+def _relevant_to(domain: str, fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Facts from this area first, then general ones — never facts that belong
+    to a different area (a gym routine has no place in a job decision)."""
+    general = (None, '', 'general')
+    return [f for f in fields if f.get('area') == domain] + [f for f in fields if f.get('area') in general]
 
 
 def _communication(sections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

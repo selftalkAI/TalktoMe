@@ -99,10 +99,38 @@ def test_a_voice_that_could_hurt_is_blocked_even_if_chosen(monkeypatch: pytest.M
         ('fitness', {'feeling': 'exhausted'}, 'mother_like', 'mind_emotions'),
         ('fitness', {'intent': 'asking'}, 'coach', 'fitness_coach'),
         ('fitness', {'intent': 'progress'}, 'coach', 'fitness_coach'),
-        ('cooking', {'intent': 'sharing'}, 'friend', 'general'),
+        ('cooking', {'intent': 'sharing'}, 'friend', 'chef'),
+        ('general', {'intent': 'sharing'}, 'friend', 'general'),
         ('emotion', {'intent': 'sharing'}, 'friend', 'mind_emotions'),
     ],
 )
 def test_brain1_picks_by_state_and_topic(mem: FakeMemories, domain: str, reading: dict[str, Any], voice: str, expertise: str) -> None:
     result = ps.select('sam@x', domain, 'hi', reading)
     assert (result['voice'], result['expertise'], result['source']) == (voice, expertise, 'selected')
+
+
+@pytest.mark.parametrize(
+    ('domain', 'message', 'reading', 'voice', 'expertise'),
+    [
+        ('general', 'Should I take the job offer or stay?', {'intent': 'asking'}, 'father_like', 'career_mentor'),
+        ('general', 'I GOT THE PROMOTION!!', {'intent': 'progress'}, 'buddy', 'career_mentor'),
+        ('general', 'I feel so behind everyone my age', {'intent': 'sharing'}, 'grandparent_like', 'general'),
+        ('general', 'Spent $400 on clothes again', {'intent': 'sharing'}, 'mentor', 'financial_analyst'),
+        ('general', 'My manager keeps ignoring my ideas', {'intent': 'sharing'}, 'mentor', 'career_mentor'),
+        ('general', 'My toddler had three tantrums today', {'intent': 'sharing'}, 'friend', 'parenting_guide'),
+        ('general', 'Had a fight with my husband', {'intent': 'sharing'}, 'friend', 'relationship_guide'),
+        ('general', "Can't sleep, awake at 3am again", {'intent': 'sharing'}, 'friend', 'sleep_guide'),
+        ('general', 'Want to learn guitar', {'intent': 'sharing'}, 'mentor', 'skills_tutor'),
+        ('cooking', 'What should I make for dinner?', {'intent': 'asking'}, 'friend', 'chef'),
+        ('general', "I can't decide whether to move cities", {'intent': 'sharing'}, 'father_like', 'general'),
+    ],
+)
+def test_new_voices_and_expertise(mem: FakeMemories, domain: str, message: str, reading: dict[str, Any], voice: str, expertise: str) -> None:
+    result = ps.select('sam@x', domain, message, reading)
+    assert (result['voice'], result['expertise']) == (voice, expertise)
+
+
+@pytest.mark.parametrize(('memory', 'blocked'), [('My dad passed away in March', 'father_like'), ('Lost my grandma last year', 'grandparent_like')])
+def test_new_family_voices_are_blocked_after_a_loss(monkeypatch: pytest.MonkeyPatch, memory: str, blocked: str) -> None:
+    monkeypatch.setattr(ps, 'memory_repo', FakeMemories([memory]))
+    assert blocked in ps.blocked_voices('sam@x')

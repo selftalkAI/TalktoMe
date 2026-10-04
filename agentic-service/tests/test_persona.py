@@ -7,7 +7,7 @@ import pytest
 from app.agents import broca, persona
 
 
-@pytest.mark.parametrize('voice_id', ['friend', 'coach', 'big_sister', 'big_brother', 'mother_like'])
+@pytest.mark.parametrize('voice_id', ['friend', 'coach', 'big_sister', 'big_brother', 'mother_like', 'father_like', 'grandparent_like', 'mentor', 'buddy'])
 def test_every_voice_is_complete(voice_id: str) -> None:
     v = persona.voice(voice_id)
     assert v['id'] == voice_id and v['name'] and '{first_name}' in v['identity']
@@ -20,7 +20,7 @@ def persona_stances() -> tuple[str, ...]:
     return STANCES
 
 
-@pytest.mark.parametrize('expertise_id', ['general', 'fitness_coach', 'mind_emotions'])
+@pytest.mark.parametrize('expertise_id', ['general', 'fitness_coach', 'mind_emotions', 'nutritionist', 'sleep_guide', 'financial_analyst', 'career_mentor', 'parenting_guide', 'relationship_guide', 'skills_tutor', 'chef', 'life_designer', 'meaning_companion'])
 def test_every_expertise_loads(expertise_id: str) -> None:
     assert persona.expertise(expertise_id)['id'] == expertise_id
 
@@ -65,3 +65,14 @@ def test_profile_narrative_is_not_a_chat_reply(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(broca, 'get_model_provider', lambda tier=None: fake)
     broca._profile_narrative({'full_name': 'Sam Lee', 'domain': 'fitness', 'domain_memories': ['Has two kids']})
     assert 'No advice, no questions' in fake.system and "Sam's own profile" in fake.system
+
+
+def test_family_voices_never_claim_to_be_family() -> None:
+    for voice_id in ('mother_like', 'father_like', 'grandparent_like'):
+        assert 'never pretend' in persona.voice(voice_id)['identity']
+
+
+def test_regulated_experts_point_to_professionals() -> None:
+    for expertise_id in ('financial_analyst', 'nutritionist', 'sleep_guide', 'fitness_coach', 'parenting_guide'):
+        exp = persona.expertise(expertise_id)
+        assert exp.get('cannot') and exp.get('always'), expertise_id

@@ -18,7 +18,7 @@ from .. import memory_repo
 #   3. Otherwise chosen from her state and the topic.
 # The Safety Core (Brain 1 Stage) will override all of this once it exists.
 
-VOICES = ('friend', 'coach', 'big_sister', 'big_brother', 'mother_like')
+VOICES = ('friend', 'coach', 'big_sister', 'big_brother', 'mother_like', 'father_like', 'grandparent_like', 'mentor', 'buddy')
 DEFAULT_VOICE = 'friend'
 
 # Stored as an explicit user-instruction memory in a system-owned domain, so it
@@ -28,7 +28,7 @@ PREFERENCE_DOMAIN = 'brain1_voice_preference'
 
 _REQUEST_RE = re.compile(
     r'\b(?:talk|speak|text|be|act)\b[^.?!]{0,30}?\blike\s+(?:a|an|my|her|his)?\s*(big\s+)?'
-    r'(sister|sis|brother|bro|friend|mate|mom|mum|mother|coach)\b',
+    r'(sister|sis|brother|bro|friend|mate|mom|mum|mother|dad|father|grandma|grandpa|grandmother|grandfather|granny|nana|mentor|buddy|coach)\b',
     re.IGNORECASE,
 )
 _LESS_COACHY_RE = re.compile(r'\bless\s+coach[- ]?y\b|\bstop\s+coaching\b', re.IGNORECASE)
@@ -36,7 +36,9 @@ _CLEAR_RE = re.compile(r'\b(?:talk|speak)\s+(?:normally|like\s+(?:yourself|you\s
 _WORD_TO_VOICE = {
     'sister': 'big_sister', 'sis': 'big_sister', 'brother': 'big_brother', 'bro': 'big_brother',
     'friend': 'friend', 'mate': 'friend', 'mom': 'mother_like', 'mum': 'mother_like', 'mother': 'mother_like',
-    'coach': 'coach',
+    'dad': 'father_like', 'father': 'father_like', 'grandma': 'grandparent_like', 'grandpa': 'grandparent_like',
+    'grandmother': 'grandparent_like', 'grandfather': 'grandparent_like', 'granny': 'grandparent_like',
+    'nana': 'grandparent_like', 'mentor': 'mentor', 'buddy': 'buddy', 'coach': 'coach',
 }
 
 _LOSS_RE = re.compile(r'\b(passed away|passed|died|lost|death|funeral|estranged|don\'t speak to|no longer speak)\b', re.IGNORECASE)
@@ -44,11 +46,36 @@ _VOICE_PEOPLE = {
     'mother_like': re.compile(r'\b(mom|mum|mother|mama|amma)\b', re.IGNORECASE),
     'big_sister': re.compile(r'\b(sister|sis)\b', re.IGNORECASE),
     'big_brother': re.compile(r'\b(brother|bro)\b', re.IGNORECASE),
+    'father_like': re.compile(r'\b(dad|father|papa|daddy)\b', re.IGNORECASE),
+    'grandparent_like': re.compile(r'\b(grandma|grandpa|grandmother|grandfather|granny|nana|grandparents?)\b', re.IGNORECASE),
 }
 
 _HEAVY_FEELINGS = ('tired', 'exhausted', 'overwhelmed', 'drained', 'sad', 'guilty', 'hopeless', 'lonely', 'burnt out', 'burned out')
+_DECISION_RE = re.compile(
+    r'\b(should i (take|quit|leave|move|buy|lend|accept|stay|sell|sign|marry|go back)|big decision|decide whether|'
+    r"can.t decide|torn between|choose between)\b",
+    re.IGNORECASE,
+)
+_PERSPECTIVE_RE = re.compile(r'\b(behind|my age|life is|this year|getting old|what.s it all for|regret)\b', re.IGNORECASE)
+_BIG_NEWS_RE = re.compile(r'(!{2,}|\b(got the|promotion|passed|nailed|finally did|engaged|new job)\b)', re.IGNORECASE)
+
 _FITNESS_DOMAINS = ('fitness', 'gym', 'exercise', 'health', 'running', 'sport', 'workout')
-_FEELING_DOMAINS = ('emotion', 'emotions', 'feelings', 'stress', 'mood', 'mental')
+
+# Expertise by life area first, then by what they're talking about (first match wins).
+_EXPERTISE_RULES = (
+    ('mind_emotions', ('emotion', 'emotions', 'feelings', 'stress', 'mood', 'mental'), ()),
+    ('financial_analyst', ('money', 'finance', 'finances', 'budget', 'spending'), ('money', 'budget', 'spent', 'spending', 'savings', 'debt', 'afford', '$')),
+    ('career_mentor', ('work', 'career', 'job'), ('manager', 'boss', 'promotion', 'career', 'interview', 'colleague', 'job')),
+    ('parenting_guide', ('parenting', 'kids', 'children'), ('toddler', 'tantrum', 'parenting', 'my son', 'my daughter', 'homework')),
+    ('relationship_guide', ('relationships', 'partner', 'family', 'friends'), ('husband', 'wife', 'partner', 'boyfriend', 'girlfriend', 'argument', 'fight with')),
+    ('sleep_guide', ('sleep',), ('sleep', 'insomnia', 'awake at', 'tired all')),
+    ('nutritionist', ('nutrition', 'diet', 'eating'), ('eat', 'eating', 'snack', 'sugar', 'diet', 'protein')),
+    ('chef', ('cooking', 'food', 'recipes'), ('cook', 'cooking', 'recipe', 'dinner', 'bake', 'baking')),
+    ('fitness_coach', ('fitness', 'gym', 'exercise', 'health', 'running', 'sport', 'workout'), ('gym', 'workout', 'run', 'exercise', 'training')),
+    ('skills_tutor', ('learning', 'skills', 'reading', 'music', 'language'), ('learn', 'practice', 'lesson', 'course', 'skill')),
+    ('meaning_companion', ('meaning', 'purpose', 'faith', 'spirituality', 'legacy'), ('purpose', 'meaning', 'legacy', 'faith', 'pray')),
+    ('life_designer', ('home', 'schedule', 'routine', 'lifestyle'), ('routine', 'schedule', 'clutter', 'mornings', 'evenings')),
+)
 
 
 def select(
@@ -69,12 +96,12 @@ def select(
     if preferred and preferred not in blocked:
         voice, source = preferred, 'her_choice'
     else:
-        voice, source = _voice_for_moment(domain, reading), 'selected'
+        voice, source = _voice_for_moment(domain, reading, latest_message), 'selected'
         unavailable = blocked | set(avoid_voices)
         if voice in unavailable:
             voice = next((v for v in (DEFAULT_VOICE, 'coach', 'big_sister', 'big_brother') if v not in unavailable), DEFAULT_VOICE)
 
-    return {'voice': voice, 'expertise': _expertise_for(domain, reading), 'source': source}
+    return {'voice': voice, 'expertise': _expertise_for(domain, reading, latest_message), 'source': source}
 
 
 def preferred_voice(profile_email: str) -> str | None:
@@ -142,22 +169,38 @@ def _record_request(profile_email: str, message: str) -> None:
         set_preferred_voice(profile_email, request)
 
 
-def _voice_for_moment(domain: str, reading: dict[str, Any]) -> str:
+def _voice_for_moment(domain: str, reading: dict[str, Any], message: str = '') -> str:
+    """Who they need right now, from how they are and what they're facing."""
     feeling = (reading.get('feeling') or '').lower()
     intent = reading.get('intent')
+    expertise = _expertise_for(domain, reading, message)
     if any(f in feeling for f in _HEAVY_FEELINGS) or intent == 'venting':
         return 'mother_like'
+    if _DECISION_RE.search(message or ''):
+        return 'father_like'
+    if intent == 'progress' and _BIG_NEWS_RE.search(message or ''):
+        return 'buddy'
+    if _PERSPECTIVE_RE.search(message or '') or expertise == 'meaning_companion':
+        return 'grandparent_like'
+    if expertise in ('career_mentor', 'financial_analyst', 'skills_tutor'):
+        return 'mentor'
     if intent in ('asking', 'progress') and _is_fitness(domain):
         return 'coach'
     return DEFAULT_VOICE
 
 
-def _expertise_for(domain: str, reading: dict[str, Any]) -> str:
+def _expertise_for(domain: str, reading: dict[str, Any], message: str = '') -> str:
     feeling = (reading.get('feeling') or '').lower()
-    if (domain or '').lower() in _FEELING_DOMAINS or reading.get('intent') == 'venting' or any(f in feeling for f in _HEAVY_FEELINGS):
+    if reading.get('intent') == 'venting' or any(f in feeling for f in _HEAVY_FEELINGS):
         return 'mind_emotions'
-    if _is_fitness(domain):
-        return 'fitness_coach'
+    area = (domain or '').lower()
+    for expertise, areas, _ in _EXPERTISE_RULES:
+        if area in areas:
+            return expertise
+    text = (message or '').lower()
+    for expertise, _, words in _EXPERTISE_RULES:
+        if any(re.search(r'(?<![a-z])' + re.escape(w) + r'(?![a-z])', text) if w.isalpha() or ' ' in w else w in text for w in words):
+            return expertise
     return 'general'
 
 
