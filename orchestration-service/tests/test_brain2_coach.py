@@ -69,6 +69,9 @@ class FakeAgentic:
 def stub_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(coach.context_pack, 'compile_stub', lambda *a, **k: dict(PACK))
     monkeypatch.setattr(coach.settings, 'brain2_speak_candidates', 2)
+    monkeypatch.setattr(
+        coach.persona_selector, 'select', lambda *a, **k: {'voice': 'friend', 'expertise': 'general', 'source': 'selected'}
+    )
 
 
 def _install(monkeypatch: pytest.MonkeyPatch, fake: FakeAgentic) -> FakeAgentic:
@@ -174,3 +177,21 @@ def test_fallback_never_repeats_the_previous_fallback() -> None:
     first = coach.fallback_reply('Sam', 'message', [])
     second = coach.fallback_reply('Sam', 'message', [first])
     assert first != second
+
+
+def test_the_selected_persona_reaches_decide_speak_and_judge(monkeypatch: pytest.MonkeyPatch) -> None:
+    sister = {'voice': 'big_sister', 'expertise': 'general', 'source': 'her_choice'}
+    monkeypatch.setattr(coach.persona_selector, 'select', lambda *a, **k: sister)
+    fake = _install(monkeypatch, FakeAgentic(['Okay, spill. What happened?', 'Tell me everything.']))
+
+    result = coach.reply('sam@example.com', 'general', 'Talk to me like my sister would.')
+
+    assert result['persona'] == sister
+    for agent in ('prefrontal_cortex', 'broca', 'anterior_cingulate'):
+        assert fake.payloads(agent)[0]['persona'] == sister
+
+
+def test_a_voice_request_is_acknowledged_in_the_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeAgentic(["Deal — just me now. So what's going on?", 'Okay, sister mode. Talk to me.']))
+    coach.reply('sam@example.com', 'general', 'Can you talk to me like my sister would?')
+    assert 'asked you to change how you talk' in fake.payloads('broca')[0]['plan']

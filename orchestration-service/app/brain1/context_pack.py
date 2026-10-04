@@ -90,7 +90,11 @@ def _today(now: datetime) -> str:
 
 def _life_facts(profile: dict[str, Any], profile_email: str, domain: str) -> str:
     """What they have told us, this domain first — never T3."""
-    memories = [m for m in memory_repo.list_memories(profile_email) if m.get('sensitivity_tier') != 'T3']
+    memories = [
+        m
+        for m in memory_repo.list_memories(profile_email)
+        if m.get('sensitivity_tier') != 'T3' and not (m.get('domain') or '').startswith('brain1_')  # system-owned, not life facts
+    ]
     memories.sort(key=lambda m: m.get('domain') != domain)
     facts = [f"- {m['content']}" for m in memories[:MAX_LIFE_FACTS]]
 

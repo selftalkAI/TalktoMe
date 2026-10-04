@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import brain1, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from .brain1 import persona_selector
 from .brain2 import intentions_repo as brain2_intentions_repo
 from .brain2 import orchestrator as brain2
 from .brain2 import profile_store as brain2_profile_store
@@ -312,6 +313,49 @@ def brain1_key_areas(email: str) -> list[dict[str, Any]]:
     if profiles_repo.get_profile(email) is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
     return brain1.key_areas_overview(email)
+
+
+class VoicePreferenceIn(BaseModel):
+    voice: str | None = Field(None, description="friend, coach, big_sister, big_brother, mother_like — or null to let Brain 1 choose")
+
+
+@app.get('/api/v1/brain1/{email}/voice')
+def brain1_get_voice(email: str) -> dict[str, Any]:
+    """Her chosen Brain 2 voice, if any (FSD FR-PER-002)."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    return {'voice': persona_selector.preferred_voice(email), 'available': list(persona_selector.VOICES)}
+
+
+@app.put('/api/v1/brain1/{email}/voice')
+def brain1_set_voice(email: str, payload: VoicePreferenceIn) -> dict[str, Any]:
+    """Sets or clears her Brain 2 voice; her choice wins over Brain 1's until she changes it."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    try:
+        return {'voice': persona_selector.set_preferred_voice(email, payload.voice)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class ConversationTurnIn(BaseModel):
+    message: str = Field(..., min_length=1)
+    domain: str = Field('general', min_length=1)
+    conversation: list[dict[str, str]] = Field(default_factory=list, description="Earlier turns: [{role: user|assistant, content}]")
+
+
+@app.post('/api/v1/brain/{email}/turn')
+def brain_turn(email: str, payload: ConversationTurnIn) -> dict[str, Any]:
+    """One conversational turn through Brain 1 and Brain 2 (TDD §5.4): a
+    checked reply, the persona used, and — rarely — a separate profile
+    proposal awaiting her acceptance (ADR-022)."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    memory_manager.remember_from_text(
+        profile_email=email, source_text=payload.message, source_type='conversation', source_id=f'turn-{payload.domain}'
+    )
+    intention = brain2_intentions_repo.get_active_intention(email, payload.domain)
+    return brain2.converse(email, payload.domain, payload.message, conversation=payload.conversation, intention=intention)
 
 
 def _profile_facts(row: dict[str, Any]) -> dict[str, Any]:

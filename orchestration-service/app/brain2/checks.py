@@ -56,6 +56,22 @@ _HOLLOW_PHRASES = (
     'proud of your journey',
 )
 
+# Personas may sound like family, never claim to be human (FSD FR-PER-004, BR-019).
+_HUMAN_CLAIMS = (
+    "i'm a real person",
+    'i am a real person',
+    "i'm human",
+    'i am human',
+    "i'm not an ai",
+    'i am not an ai',
+    "i'm not a bot",
+    'i am not a bot',
+    "i'm your mom",
+    "i'm your mother",
+    "i'm your sister",
+    "i'm your brother",
+)
+
 _LIST_LINE_RE = re.compile(r'^\s*(?:[-*•]|\d+[.)])\s+', re.MULTILINE)
 _HEADING_RE = re.compile(r'^\s*#{1,6}\s+|\*\*[^*]+\*\*', re.MULTILINE)
 _NUMBER_RE = re.compile(r'\d+(?:[.,]\d+)?')
@@ -117,6 +133,10 @@ def check_reply(
     hollow = [p for p in _HOLLOW_PHRASES if p in lowered]
     if hollow:
         failures.append(f'hollow or therapy-style phrasing ({hollow[0]!r}) — be plain and specific')
+
+    claim = [p for p in _HUMAN_CLAIMS if p in lowered]
+    if claim:
+        failures.append(f'claims to be human or a real person in their life ({claim[0]!r}) — you are an AI')
 
     if text.count('?') > max_questions:
         failures.append(f'asks {text.count("?")} questions — ask at most {max_questions}')

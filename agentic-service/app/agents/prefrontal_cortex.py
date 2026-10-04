@@ -6,7 +6,7 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
-from . import _shared
+from . import _shared, persona
 from ._graph import router_graph, run
 
 # Prefrontal Cortex: higher-order reasoning (ADD §8) — connecting past to
@@ -188,18 +188,19 @@ def _plan_reply(payload: dict[str, Any]) -> dict[str, Any]:
     enforce the hard limits (safety, one question, answer their question
     first), so nothing here needs to be trusted for those.
     """
-    persona = payload.get('persona') or {}
+    voice, exp = persona.resolve(payload.get('persona'))
+    allowed = [s for s in voice.get('allowed_stances') or STANCES if s in STANCES]
     pack: dict[str, str] = payload.get('context_pack') or {}
     reading = payload.get('reading') or {}
     known = '\n'.join(f'{k}: {v}' for k, v in pack.items() if k != 'first_name' and (v or '').strip())
 
     system_prompt = (
         "You plan — you do not write — the next reply to someone you know well. "
-        f"You are speaking as: {persona.get('voice', 'friend')}, with {persona.get('expertise', 'general life')} know-how. "
+        f"You are speaking as {voice['name']}, with know-how in {exp['name']}. "
         "An excellent coach understands before advising, uses the person's own reasons, offers an idea "
         "only as an option, and asks at most one question. Pick what they need most right now.\n"
         "Return JSON only:\n"
-        '{"stance": one of ' + '|'.join(STANCES) + ',\n'
+        '{"stance": one of ' + '|'.join(allowed) + ',\n'
         ' "moves": one or two of ' + '|'.join(MOVES) + ',\n'
         ' "question": the one question to ask, or null,\n'
         ' "idea": one small concrete idea to offer as an option, or null,\n'
@@ -211,7 +212,10 @@ def _plan_reply(payload: dict[str, Any]) -> dict[str, Any]:
         f'Your reading of their latest message: {json.dumps(reading)}'
     )
     response = get_model_provider('large').chat([{'role': 'user', 'content': prompt}], system=system_prompt)
-    return _normalise_plan(_shared.parse_json_object(response))
+    plan = _normalise_plan(_shared.parse_json_object(response))
+    if plan['stance'] not in allowed:
+        plan['stance'] = None  # this voice doesn't take that stance; the plan rules choose
+    return plan
 
 
 def _normalise_plan(parsed: dict[str, Any]) -> dict[str, Any]:

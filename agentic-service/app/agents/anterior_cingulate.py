@@ -6,7 +6,7 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
-from . import _shared
+from . import _shared, persona
 from ._graph import run, single_node_graph
 
 # Anterior Cingulate: error detection (Building_Brain2.md §3, §9.4.4) — the
@@ -21,7 +21,7 @@ SCORES = ('specific', 'in_voice', 'on_plan', 'respectful')
 
 def _judge(payload: dict[str, Any]) -> dict[str, Any]:
     reply = (payload.get('reply') or '').strip()
-    voice = (payload.get('voice') or 'a caring friend').strip()
+    voice = persona.voice((payload.get('persona') or {}).get('voice'))['name']
 
     system_prompt = (
         'You review one reply before it is sent to someone. Be strict. Return JSON only:\n'

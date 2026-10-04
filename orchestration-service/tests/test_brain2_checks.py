@@ -83,3 +83,8 @@ def test_a_day_not_in_context_fails() -> None:
     result = check_reply('Sunday can be tough, right?', allowed_text='Today: Saturday, 3 October 2026')
     assert any('day not in the context' in f for f in result.failures)
     assert check_reply('Saturday mornings are yours.', allowed_text='Today: Saturday').passed
+
+
+def test_claiming_to_be_human_fails() -> None:
+    result = check_reply("I'm a real person, don't worry.")
+    assert any('claims to be human' in f for f in result.failures)

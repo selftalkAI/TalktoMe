@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .. import memory_repo, profiles_repo
@@ -117,46 +118,33 @@ def offer_support(profile_email: str, intention: dict[str, Any], streak: int, ch
     return {'message': message, 'suggested_target_minutes': result.get('suggested_target_minutes')}
 
 
-def propose_refinement(
+def converse(
     profile_email: str,
     domain: str,
-    user_reflection: str,
+    message: str,
+    *,
+    conversation: list[dict[str, str]] | None = None,
+    trigger: str = 'message',
     intention: dict[str, Any] | None = None,
     streak: int | None = None,
     support_message: str = '',
-    source_memory_ids: list[str] | None = None,
-    conversation_history: str | None = None,
     checkin_mode: bool = False,
     escalation_level: int = 0,
-    conversation: list[dict[str, str]] | None = None,
-    trigger: str = 'message',
 ) -> dict[str, Any]:
-    """Brain 2's reply for this turn, stored as a `profile_entries` row with
-    status='proposed' — never written as durable; only `accept_proposal` can
-    change that.
+    """One conversational turn (ADD §8.2): Brain 2's checked reply, plus —
+    rarely — a separate profile proposal (Remember step, ADR-022).
 
-    The text comes from Brain 2's checked reply step (`coach.reply`: Context
-    Pack → plan → Speak → Check → rewrite once → safe fallback), so nothing
-    that fails Check is ever stored or shown (FSD BR-016). Storing every chat
-    reply as a proposal is the pre-redesign contract callers still rely on;
-    Brain 2 Phase E separates chat replies from (rare) profile proposals.
-
-    `conversation` is the thread so far as real turns
-    (`{'role': 'user'|'assistant', 'content': ...}`), not including
-    `user_reflection`. `conversation_history` is the older "User: …/Brain 2: …"
-    transcript string, still accepted and converted. `trigger` is 'message',
-    or 'silence'/'schedule' when Brain 2 reaches out without new input.
+    Returns `reply` (the chat text; never stored as a profile entry),
+    `persona`, `reading`, `plan`, `verdict`, `fallback`, and `proposal` (a
+    `profile_entries` row with status='proposed', or None). `conversation`
+    is the thread so far as real turns, not including `message`.
     """
-    domain_memories = memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
     checkins = intentions_repo.list_checkins(intention['intention_id'], profile_email) if intention else None
-    if not user_reflection.strip() and trigger == 'message':
-        trigger = 'schedule'
-
     result = coach.reply(
         profile_email,
         domain,
-        user_reflection,
-        conversation=conversation if conversation is not None else _turns_from_history(conversation_history),
+        message,
+        conversation=conversation,
         trigger=trigger,
         intention=intention,
         checkins=checkins,
@@ -165,25 +153,118 @@ def propose_refinement(
         checkin_mode=checkin_mode,
         escalation_level=escalation_level,
     )
+    proposal = None
+    if trigger == 'message' and _learned_something_lasting(profile_email, domain, result['reading'], intention):
+        proposal = propose_refinement(profile_email, domain, message, intention=intention, streak=streak)
+    return {
+        'reply': result['content'],
+        'persona': result['persona'],
+        'reading': result['reading'],
+        'plan': result['plan'],
+        'verdict': result['verdict'],
+        'fallback': result['fallback'],
+        'proposal': proposal,
+    }
+
+
+# How much new, durable material in one area justifies offering a profile
+# update. Lower = more proposals; the point of ADR-022 is that they are rare.
+NEW_MEMORIES_FOR_PROPOSAL = 3
+
+
+def _learned_something_lasting(
+    profile_email: str, domain: str, reading: dict[str, Any], intention: dict[str, Any] | None
+) -> bool:
+    """The Remember step's gate — deterministic, never a model's call:
+    a goal milestone reached today, or enough new durable memories in this
+    area since the last proposal, with nothing already waiting for review."""
+    history = profile_store.history(profile_email, domain)
+    if history and history[-1]['status'] == profile_store.PROPOSED:
+        return False  # one pending proposal per area at a time
+
+    minutes = reading.get('minutes_today')
+    if intention and reading.get('did_it_today') and isinstance(minutes, int) and minutes >= intention['target_minutes']:
+        return True
+
+    since = history[-1]['proposed_at'] if history else ''
+    fresh = [
+        m
+        for m in memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
+        if m['created_at'] > since and m.get('sensitivity_tier') != 'T3'
+    ]
+    return len(fresh) >= NEW_MEMORIES_FOR_PROPOSAL
+
+
+def propose_refinement(
+    profile_email: str,
+    domain: str,
+    user_reflection: str,
+    intention: dict[str, Any] | None = None,
+    streak: int | None = None,
+    support_message: str = '',
+    source_memory_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Drafts a durable Profile entry for one area — never writes it. Returns
+    a `profile_entries` row with status='proposed'; only `accept_proposal`
+    can change that (ADR-014). Not a chat reply (ADR-022): a short, checked
+    snapshot written by Broca `profile_narrative`, grounded in this area's
+    non-T3 memories and goal history.
+    """
+    domain_memories = [
+        m
+        for m in memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
+        if m.get('sensitivity_tier') != 'T3'
+    ]
+    previous = profile_store.get_accepted(profile_email, domain)
+    payload: dict[str, Any] = {
+        **_profile_facts(profile_email),
+        'operation': 'profile_narrative',
+        'domain': domain,
+        'user_reflection': user_reflection,
+        'previous_entry_content': previous['content'] if previous else None,
+        'domain_memories': [m['content'] for m in domain_memories],
+    }
+    if intention is not None:
+        payload.update({'title': intention['title'], 'target_minutes': intention['target_minutes'], 'streak': streak})
+
+    allowed = '\n'.join([json.dumps(payload), support_message])
+    content = ''
+    for _ in range(2):
+        draft = _run_broca(profile_email, payload)
+        result = check_reply(draft, allowed_text=allowed, max_words=NARRATIVE_MAX_WORDS, max_questions=0)
+        if result.passed:
+            content = draft
+            break
+        payload['rewrite_feedback'] = result.feedback()
+    if not content:
+        content = _fallback_profile_content(domain, user_reflection, intention)
 
     return profile_store.propose(
         profile_email=profile_email,
         domain=domain,
-        content=result['content'],
+        content=content,
         source_memory_ids=source_memory_ids or [m['memory_id'] for m in domain_memories],
     )
 
 
-def _turns_from_history(conversation_history: str | None) -> list[dict[str, str]]:
-    """Converts the older "User: …" / "Brain 2: …" transcript into real turns."""
-    turns: list[dict[str, str]] = []
-    for line in (conversation_history or '').splitlines():
-        speaker, _, text = line.partition(':')
-        if not text.strip():
-            continue
-        role = 'assistant' if speaker.strip().lower().startswith('brain 2') else 'user'
-        turns.append({'role': role, 'content': text.strip()})
-    return turns
+NARRATIVE_MAX_WORDS = 90
+
+
+def _run_broca(profile_email: str, payload: dict[str, Any]) -> str:
+    try:
+        run = AgenticServiceClient().create_agent_run('broca', user_id=profile_email, goal=_as_json(payload))
+    except AgenticServiceError:
+        return ''
+    return ((_first_step_result(run) or {}).get('content') or '').strip()
+
+
+def _fallback_profile_content(domain: str, user_reflection: str, intention: dict[str, Any] | None) -> str:
+    """Plain and honest — used only when no draft passed Check."""
+    if intention is not None:
+        return f"You're working toward {intention['title'].lower()}, {intention['target_minutes']} minutes a day — this area is still taking shape."
+    if user_reflection.strip():
+        return f"In {domain}, you said: \"{user_reflection.strip()[:200]}\""
+    return f'Not much is known about {domain} yet — it will fill in as you talk about it.'
 
 
 def accept_proposal(profile_entry_id: str, profile_email: str) -> dict[str, Any]:

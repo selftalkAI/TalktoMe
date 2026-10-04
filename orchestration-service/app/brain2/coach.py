@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..brain1 import context_pack
+from ..brain1 import context_pack, persona_selector
 from ..config import settings
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import plan_rules
@@ -18,9 +18,6 @@ from .checks import check_reply
 
 MIN_JUDGE_TOTAL = 10  # of 20: below this, a rule-passing draft still isn't good enough to send
 
-# Until Brain 1's Persona Selector exists (Building_Brain1.md §12.4), every
-# reply uses the default persona the prompt files describe.
-DEFAULT_PERSONA = {'voice': 'a warm friend', 'expertise': 'everyday coaching'}
 
 
 def reply(
@@ -36,6 +33,7 @@ def reply(
     support_message: str = '',
     checkin_mode: bool = False,
     escalation_level: int = 0,
+    persona: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """One checked reply. Returns `content` plus the trace of how it was
     made: `reading`, `plan`, `verdict` (the judge's scores for the sent
@@ -46,6 +44,8 @@ def reply(
     (`{'role': 'user'|'assistant', 'content': ...}`), oldest first, NOT
     including `latest_message`. `trigger` is 'message' when the person just
     wrote, or 'silence'/'schedule' when Brain 2 reaches out on its own.
+    `persona` overrides Brain 1's Persona Selector (scripts and tests only —
+    the selector also records voice requests, which a dry run must not).
     """
     conversation = conversation or []
     pack = context_pack.compile_stub(
@@ -54,14 +54,20 @@ def reply(
     turn = _Turn(profile_email, pack, conversation, latest_message)
 
     reading = turn.understand() if trigger == 'message' else {}
+    turn.persona = persona or persona_selector.select(profile_email, domain, latest_message, reading)
     decided = turn.decide(reading) if trigger == 'message' else {}
     plan = plan_rules.apply(decided, reading, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level)
+    if persona_selector.detect_request(latest_message) not in (None, 'clear'):
+        plan['words'] += (
+            '\nThey just asked you to change how you talk to them. Agree warmly in your new voice in one short '
+            "line, then ask what's going on."
+        )
 
     best = turn.best_of(plan, settings.brain2_speak_candidates, feedback='')
     if best is None and turn.speak_available:
         best = turn.best_of(plan, 1, feedback=turn.rewrite_feedback())
 
-    trace = {'reading': reading, 'plan': plan, 'attempts': turn.attempts, 'failures': turn.failures}
+    trace = {'reading': reading, 'plan': plan, 'persona': turn.persona, 'attempts': turn.attempts, 'failures': turn.failures}
     if best is not None:
         return {'content': best['content'], 'verdict': best['verdict'], 'fallback': False, **trace}
     return {'content': fallback_reply(pack['first_name'], trigger, turn.previous), 'verdict': None, 'fallback': True, **trace}
@@ -81,6 +87,7 @@ class _Turn:
         self.attempts = 0
         self.failures: list[str] = []
         self.speak_available = True
+        self.persona: dict[str, str] = {'voice': persona_selector.DEFAULT_VOICE, 'expertise': 'general', 'source': 'default'}
         self.examples: list[str] = []  # the prompt's example replies, so a copied example is caught
 
     # --- Understand / Decide --------------------------------------------------
@@ -101,7 +108,7 @@ class _Turn:
             'prefrontal_cortex',
             {
                 'operation': 'plan_reply',
-                'persona': DEFAULT_PERSONA,
+                'persona': self.persona,
                 'context_pack': self.public_pack,
                 'conversation': self.conversation,
                 'latest_message': self.latest_message,
@@ -133,6 +140,7 @@ class _Turn:
             'broca',
             {
                 'operation': 'speak',
+                'persona': self.persona,
                 'context_pack': self.public_pack,
                 'plan': plan['words'],
                 'conversation': self.conversation,
@@ -165,7 +173,7 @@ class _Turn:
             'anterior_cingulate',
             {
                 'reply': draft,
-                'voice': DEFAULT_PERSONA['voice'],
+                'persona': self.persona,
                 'plan': plan['words'],
                 'facts': '\n'.join(v for k, v in self.public_pack.items() if k != 'first_name' and v),
                 'conversation': self.conversation,

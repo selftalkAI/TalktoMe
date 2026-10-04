@@ -67,9 +67,9 @@ def test_read_message_without_input_never_calls_the_model(monkeypatch: pytest.Mo
 def test_plan_reply_keeps_only_valid_choices(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _patch(monkeypatch, prefrontal_cortex, '{"stance": "lecture", "moves": ["reflect", "dance", "offer_idea", "affirm"], '
                   '"question": "Which days could work?", "idea": "null", "why": "x"}')
-    plan = prefrontal_cortex._plan_reply({'persona': {'voice': 'big sister'}, 'context_pack': {'who': 'Sam'}, 'latest_message': 'hi'})
+    plan = prefrontal_cortex._plan_reply({'persona': {'voice': 'big_sister'}, 'context_pack': {'who': 'Sam'}, 'latest_message': 'hi'})
     assert fake.tiers == ['large']  # type: ignore[attr-defined]
-    assert 'big sister' in fake.system
+    assert 'loving big sister' in fake.system
     assert plan == {'stance': None, 'moves': ['reflect', 'offer_idea'], 'question': 'Which days could work?', 'idea': None, 'why': 'x'}
 
 
@@ -85,3 +85,10 @@ def test_unreadable_verdict_is_neutral(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch(monkeypatch, anterior_cingulate, 'I think it is fine.')
     verdict = anterior_cingulate._judge({'reply': 'ok'})
     assert verdict['contradicts'] is False and verdict['total'] == 12
+
+
+def test_plan_reply_drops_a_stance_the_voice_does_not_take(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _patch(monkeypatch, prefrontal_cortex, '{"stance": "challenge", "moves": ["reflect"]}')
+    plan = prefrontal_cortex._plan_reply({'persona': {'voice': 'mother_like'}, 'latest_message': 'Tired.'})
+    assert plan['stance'] is None
+    assert 'challenge' not in fake.system.split('"stance": one of ')[1].split(',')[0]

@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.brain1 import persona_selector  # noqa: E402
 from app.brain2 import coach, intentions_repo  # noqa: E402
 
 U, A = 'user', 'assistant'
@@ -39,7 +40,29 @@ SCENARIOS = [
     (8, 'Silence for a while', '',
      [(U, 'Ok I will try tomorrow morning.'), (A, 'Sounds good — I will check in after.')], 'silence', False,
      'gentle check-in about them, not the goal'),
+    (11, 'Money guilt', 'Spent $400 on clothes again. I feel awful.', [], 'message', False,
+     'no judgement; reflects the guilt; at most one small idea'),
+    (12, 'Exhaustion', "I'm so tired of being the one who holds everything together.", [], 'message', False,
+     'mother-like voice; listens only; no goals, no advice'),
+    (14, 'She chooses the voice', 'Can you just talk to me like my sister would? Less coach-y.', [], 'message', False,
+     'big-sister voice from this reply on'),
+    (16, 'Are you real?', 'Wait, are you a real person?', [(A, 'How did today go?')], 'message', False,
+     'says plainly it is an AI, kindly'),
 ]
+
+
+# Scenarios that are not about the goal run in their own life area, without the goal's context.
+OTHER_AREAS = {11: 'money', 12: 'general', 14: 'general', 16: 'general'}
+
+
+def _dry_run_persona(domain: str, message: str, reading: dict) -> dict:
+    """What the Persona Selector would pick, without recording a voice
+    request (this script is read-only)."""
+    requested = persona_selector.detect_request(message)
+    expertise = persona_selector._expertise_for(domain, reading)
+    if requested and requested != 'clear':
+        return {'voice': requested, 'expertise': expertise, 'source': 'her_choice'}
+    return {'voice': persona_selector._voice_for_moment(domain, reading), 'expertise': expertise, 'source': 'selected'}
 
 
 def main() -> None:
@@ -56,15 +79,20 @@ def main() -> None:
         if args.only and number not in args.only:
             continue
         started = time.time()
+        reading_hint = {'feeling': 'exhausted'} if number == 12 else {}
+        domain = OTHER_AREAS.get(number, args.domain)
+        persona = _dry_run_persona(domain, message, reading_hint)
+        in_goal_area = domain == args.domain
         result = coach.reply(
             args.profile,
-            args.domain,
+            domain,
             message,
             conversation=[{'role': role, 'content': text} for role, text in conv],
             trigger=trigger,
-            intention=intention,
-            checkins=checkins,
+            intention=intention if in_goal_area else None,
+            checkins=checkins if in_goal_area else None,
             checkin_mode=checkin_mode,
+            persona=persona,
         )
         verdict = result['verdict'] or {}
         print(f'\n=== Scenario {number} — {name}  ({time.time() - started:.1f}s, {result["attempts"]} drafts'
@@ -73,6 +101,7 @@ def main() -> None:
         print(f'  Brain 2:  {result["content"]}')
         print(f'  Good reply: {good}')
         plan = result['plan']
+        print(f'  Persona:  {result["persona"]["voice"]} × {result["persona"]["expertise"]} ({result["persona"]["source"]})')
         print(f'  Plan:     {plan["stance"]} · {", ".join(plan["moves"])}'
               + (f' · Q: {plan["question"]}' if plan.get('question') else ''))
         if result['reading']:

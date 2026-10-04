@@ -1,29 +1,19 @@
-"""Serves an interactive, continuous Brain 1 <-> Brain 2 <-> User 1 loop,
+"""Serves an interactive Brain 1 <-> Brain 2 conversation for one test profile.
 
-driven toward one deterministic goal: the user's fitness intention reaching
-and sustaining its original target (60 min/day gym).
-
-The shape, per the user's own description across several rounds of
-refinement:
-  1. User 1 types ONE message. Brain 1 relays it to Brain 2.
-  2. Brain 2 (Amygdala, if a real shortfall pattern just fired; always
-     Broca) composes a response — a Profile draft. Brain 1 hands it back to
-     User 1.
-  3. User 1 can Accept it (the only durable write, per ADR-014) or reply
-     with feedback, which Brain 1 relays back to Brain 2 to re-analyse
-     (`orchestrator.refine_proposal`) — a new draft comes back, and the loop
-     continues. Fully iterative.
-  4. If User 1 goes quiet past a stipulated idle window, Brain 1 nudges
-     Brain 2 on its own — never pretending to be User 1 or inventing a
-     number that was never reported, only asking Brain 2 to follow up
-     without repeating its last (still-unanswered) message — until User 1
-     responds again. This auto-nudge never accepts a proposal on the real
-     user's behalf; only a real browser action does that.
-  5. This keeps going — interactively when a human is present, autonomously
-     when they're not — until the goal (60 min/day, sustained) is reached.
-     Ground truth (today's actual minutes) is always a number that was
-     actually stated in a message (parsed deterministically, never invented
-     by a model) — same ADR-007 split used everywhere else in this codebase.
+  1. The person types a message. It is routed to its life area (fitness,
+     cooking, ...), and Hippocampus remembers what is durable in it.
+  2. Brain 1 compiles a Context Pack and picks Brain 2's persona (voice x
+     expertise); "talk to me like my sister" sets the voice until changed.
+  3. Brain 2 understands, plans, speaks, and checks its reply before it is
+     shown (Building_Brain2.md §6). Chat replies are just chat.
+  4. Rarely — a goal milestone, or enough new durable facts in an area —
+     Brain 2 also offers a separate profile proposal card; only "Yes, save
+     it" makes it durable (ADR-014, ADR-022).
+  5. If the person goes quiet past the idle window, Brain 2 checks in
+     gently on conversations awaiting a reply — never inventing their words
+     or numbers.
+  For the fitness area, logged minutes drive the deterministic shortfall
+  streak and support message, until the 60 min/day goal is reached.
 
 Uses a dedicated profile (`user1.interactive@example.com`), separate from
 `simulate_brain1_brain2_hour.py`'s fully-autonomous profile, so the two never
@@ -80,7 +70,8 @@ _DOMAIN_WORD_RE = re.compile(r'[a-z]+')
 
 LOCK = threading.Lock()
 THREAD: list[dict] = []
-CURRENT: dict[str, dict] = {}  # domain -> {'proposal_id', 'version', 'content'} for its latest un-accepted draft
+CURRENT: dict[str, dict] = {}  # domain -> {'proposal_id', 'version', 'content'} for its pending profile proposal (rare, ADR-022)
+AWAITING: set[str] = set()  # domains where Brain 2 spoke last and the person hasn't replied — what silence check-ins follow up
 INTENTION: dict | None = None  # the fitness-domain intention only; no other domain has one in this script
 LAST_ACTIVITY = time.monotonic()
 GOAL_ACHIEVED = False  # fitness-only milestone
@@ -166,7 +157,7 @@ def _domain_turns(domain: str) -> list[dict[str, str]]:
     for entry in THREAD:
         if entry.get('domain') != domain:
             continue
-        if entry['kind'] in ('user', 'user_feedback'):
+        if entry['kind'] == 'user':
             turns.append({'role': 'user', 'content': entry['text']})
         elif entry['kind'] in ('brain2', 'brain2_support'):
             turns.append({'role': 'assistant', 'content': entry['text']})
@@ -174,31 +165,24 @@ def _domain_turns(domain: str) -> list[dict[str, str]]:
 
 
 def _process_turn(text: str, domain: str) -> None:
-    """A real message from User 1, already routed to its domain — either a
-
-    freshly-classified top-level message (`handle_send`) or a reply the
-    frontend already knows the domain of (`handle_reply`). The idle watchdog
-    uses `_process_auto_nudge` instead, which never fabricates user input.
-    Only the fitness domain's checkin/support machinery runs; every other
-    domain gets the plain generic propose_refinement path (ADD §6.1 — the
-    goal-adherence domain is one specific case, not the template for all of
-    them). Always ends with exactly one new pending Brain 2 draft in this
-    domain for the user to react to.
+    """A real message from User 1, already routed to its domain. The idle
+    watchdog uses `_process_auto_nudge` instead, which never fabricates user
+    input. Only the fitness domain's checkin/support machinery runs; every
+    other domain gets the plain conversation path (ADD §6.1). Always ends
+    with one checked Brain 2 reply; a profile proposal appears only when
+    Brain 2's Remember step judged something lasting was learned (ADR-022).
     """
     global INTENTION, GOAL_ACHIEVED, LAST_ACTIVITY
 
     history = _domain_turns(domain)  # captured before this turn's own entry is appended
 
-    # A reply to an already-pending draft in this domain reads as feedback;
-    # nothing pending in it yet reads as a fresh reflection — same
-    # distinction the explicit /api/send vs /api/reply endpoints make.
-    user_kind = 'user_feedback' if domain in CURRENT else 'user'
-    _append(user_kind, text, domain=domain)
+    _append('user', text, domain=domain)
+    AWAITING.discard(domain)
 
     # This is the actual "remember the user" mechanism (US-002's memory
     # layer, not a bespoke one) — Hippocampus extracts candidate durable
     # facts from what was just said, the deterministic write-gate decides
-    # what's durable enough to keep, and `propose_refinement` below already
+    # what's durable enough to keep, and Brain 1's Context Pack below already
     # reads them back as `domain_memories`. Without this call that grounding
     # was always empty, no matter what the person revealed. Best-effort —
     # `remember_from_text` never raises, so this can't block the turn.
@@ -243,19 +227,20 @@ def _process_turn(text: str, domain: str) -> None:
                 _append('system', f"Brain 1: target adjusted to {new_target} min/day for now — a stepping stone back to {ORIGINAL_TARGET_MINUTES}.", domain=domain)
             intention_for_broca = INTENTION
 
-    proposal = orchestrator.propose_refinement(
-        profile_email=PROFILE_EMAIL,
-        domain=domain,
-        user_reflection=text,
+    turn = orchestrator.converse(
+        PROFILE_EMAIL,
+        domain,
+        text,
+        conversation=history,
         intention=intention_for_broca,
         streak=streak,
         support_message=support_message,
-        conversation=history,
         checkin_mode=checkin_mode,
         escalation_level=escalation_level,
     )
-    CURRENT[domain] = {'proposal_id': proposal['profile_entry_id'], 'version': proposal['version'], 'content': proposal['content']}
-    _append('brain2', proposal['content'], proposal_id=proposal['profile_entry_id'], version=proposal['version'], domain=domain)
+    _append('brain2', turn['reply'], persona=turn['persona'], domain=domain)
+    AWAITING.add(domain)
+    _offer_proposal(turn['proposal'], domain)
 
     if (
         domain == GOAL_DOMAIN
@@ -307,12 +292,24 @@ def handle_accept(domain: str) -> dict:
     return {'ok': True}
 
 
-def handle_reply(feedback: str, domain: str) -> dict:
+def handle_reject(domain: str) -> dict:
+    global LAST_ACTIVITY
     with LOCK:
-        if domain not in CURRENT:
-            return {'ok': False, 'error': f"Nothing pending in '{domain}' to reply to — send a new message instead."}
-        _process_turn(feedback, domain)
+        pending = CURRENT.pop(domain, None)
+        if pending is None:
+            return {'ok': False, 'error': f"Nothing pending in '{domain}'."}
+        orchestrator.reject_proposal(pending['proposal_id'], PROFILE_EMAIL)
+        _append('system', f"Not saved — Profile '{domain}' unchanged.", domain=domain)
+        LAST_ACTIVITY = time.monotonic()
     return {'ok': True}
+
+
+def _offer_proposal(proposal: dict | None, domain: str) -> None:
+    """A profile proposal is its own card, separate from the chat (ADR-022)."""
+    if proposal is None:
+        return
+    CURRENT[domain] = {'proposal_id': proposal['profile_entry_id'], 'version': proposal['version'], 'content': proposal['content']}
+    _append('proposal', proposal['content'], proposal_id=proposal['profile_entry_id'], version=proposal['version'], domain=domain)
 
 
 _LAST_NUDGED_DOMAIN: str | None = None
@@ -339,7 +336,7 @@ def _process_auto_nudge() -> bool:
     line, so it stays in rotation as long as something of its is pending.
     """
     global _LAST_NUDGED_DOMAIN
-    candidates = [d for d in CURRENT if not (d == GOAL_DOMAIN and GOAL_ACHIEVED)]
+    candidates = sorted(d for d in AWAITING if not (d == GOAL_DOMAIN and GOAL_ACHIEVED))
     if not candidates:
         return False
     start = (candidates.index(_LAST_NUDGED_DOMAIN) + 1) % len(candidates) if _LAST_NUDGED_DOMAIN in candidates else 0
@@ -348,20 +345,18 @@ def _process_auto_nudge() -> bool:
 
     history = _domain_turns(domain)
     escalation_level = ESCALATION.get(domain, 0)
-    _append('system', f"Brain 1 → Brain 2 ({domain}): no response from User 1 yet — asking for a stronger answer (attempt #{escalation_level + 1}).", domain=domain)
-    proposal = orchestrator.propose_refinement(
-        profile_email=PROFILE_EMAIL,
-        domain=domain,
-        user_reflection='',
+    _append('system', f"Brain 1 ({domain}): no reply for a while — Brain 2 checks in gently (attempt #{escalation_level + 1}).", domain=domain)
+    turn = orchestrator.converse(
+        PROFILE_EMAIL,
+        domain,
+        '',
         trigger='silence',
         intention=INTENTION if domain == GOAL_DOMAIN else None,
         conversation=history,
-        checkin_mode=True,
         escalation_level=escalation_level,
     )
     ESCALATION[domain] = escalation_level + 1
-    CURRENT[domain] = {'proposal_id': proposal['profile_entry_id'], 'version': proposal['version'], 'content': proposal['content']}
-    _append('brain2', proposal['content'], proposal_id=proposal['profile_entry_id'], version=proposal['version'], domain=domain)
+    _append('brain2', turn['reply'], persona=turn['persona'], domain=domain)
     return True
 
 
@@ -414,6 +409,8 @@ _INDEX_HTML = """<!doctype html>
   .system { text-align:center; color:var(--accent); font-size:12px; margin:14px 0; font-weight:600; }
   .milestone { text-align:center; margin:16px 0; padding:10px; border-radius:10px; background:#d1a62c; color:#221c07;
     font-weight:700; font-size:13px; }
+  .proposal { margin:12px 0 4px 60px; padding:10px 14px; border-radius:12px; border:1px dashed var(--accent);
+    background:var(--panel); font-size:13px; line-height:1.45; white-space:pre-wrap; max-width:72%; }
   .controls { margin:8px 0 18px 60px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; }
   .controls textarea { flex:1; min-width:220px; background:var(--panel); border:1px solid #262a33; border-radius:8px;
     color:var(--text); padding:8px 10px; font-size:13px; resize:vertical; min-height:36px; }
@@ -478,14 +475,14 @@ async function refresh() {
 }
 
 function render(data) {
-  const { thread, pending, fitness_target_minutes, goal_achieved, idle_seconds_remaining } = data;
-  const pendingDomains = Object.keys(pending || {});
+  const { thread, pending, awaiting, fitness_target_minutes, goal_achieved, idle_seconds_remaining } = data;
+  const pendingDomains = awaiting || [];
   document.getElementById('s-target').textContent = fitness_target_minutes ?? '-';
   document.getElementById('s-goal').textContent = goal_achieved ? 'achieved' : 'in progress';
   document.getElementById('achieved').style.display = goal_achieved ? 'block' : 'none';
   if (idle_seconds_remaining != null && pendingDomains.length) {
     document.getElementById('idle-note').textContent =
-      `If you don't reply, Brain 1 will follow up on ${pendingDomains.length > 1 ? 'open topics' : `'${pendingDomains[0]}'`} on its own in ~${idle_seconds_remaining}s.`;
+      `If you don't reply, Brain 2 will check in on ${pendingDomains.length > 1 ? 'open topics' : `'${pendingDomains[0]}'`} in ~${idle_seconds_remaining}s.`;
   } else {
     document.getElementById('idle-note').textContent = '';
   }
@@ -498,7 +495,7 @@ function render(data) {
   // blocked. Skip the rebuild for either case; the stats/idle-note above
   // still update live regardless.
   const active = document.activeElement;
-  if (REQUEST_IN_FLIGHT || (active && active.classList && active.classList.contains('reply-box'))) {
+  if (REQUEST_IN_FLIGHT) {
     return;
   }
 
@@ -511,11 +508,11 @@ function render(data) {
 
   thread.forEach((ev) => {
     const domainPending = pending && pending[ev.domain];
-    const isLatestPending = ev.kind === 'brain2' && domainPending && ev.proposal_id === domainPending.proposal_id;
-    if (ev.kind === 'user' || ev.kind === 'user_feedback') {
+    const isLatestPending = ev.kind === 'proposal' && domainPending && ev.proposal_id === domainPending.proposal_id;
+    if (ev.kind === 'user') {
       const row = document.createElement('div');
       row.className = 'row you';
-      const who = (ev.kind === 'user_feedback' ? 'You · feedback' : 'You') + (ev.domain ? ` · ${ev.domain}` : '');
+      const who = 'You' + (ev.domain ? ` · ${ev.domain}` : '');
       row.innerHTML = `<div class="bubble"><span class="who">${esc(who)}</span>${esc(ev.text)}</div><div class="avatar user1">👤</div>`;
       feed.appendChild(row);
     } else if (ev.kind === 'brain2_support') {
@@ -526,30 +523,30 @@ function render(data) {
     } else if (ev.kind === 'brain2') {
       const row = document.createElement('div');
       row.className = 'row brain2';
-      row.innerHTML = `<div class="avatar brain2">🤖</div><div class="bubble"><span class="who">Brain 2 · Profile '${esc(ev.domain)}' draft v${ev.version}</span>${esc(ev.text)}</div>`;
+      const voice = ev.persona ? ` · ${esc(ev.persona.voice.replace('_', ' '))}${ev.persona.source === 'her_choice' ? ' (your choice)' : ''}` : '';
+      row.innerHTML = `<div class="avatar brain2">🤖</div><div class="bubble"><span class="who">Brain 2${voice}</span>${esc(ev.text)}</div>`;
       feed.appendChild(row);
+    } else if (ev.kind === 'proposal') {
+      const card = document.createElement('div');
+      card.className = 'proposal';
+      card.innerHTML = `<span class="who">I've learned something about you · ${esc(ev.domain)} profile v${ev.version} — does this sound right?</span>${esc(ev.text)}`;
+      feed.appendChild(card);
       if (isLatestPending) {
         const ctrl = document.createElement('div');
         ctrl.className = 'controls';
-        ctrl.innerHTML = `
-          <button class="accept-btn">Accept</button>
-          <textarea class="reply-box" placeholder="Not quite — reply with feedback and Brain 2 will re-analyse…" rows="1"></textarea>
-          <button class="secondary reply-btn">Reply</button>`;
+        ctrl.innerHTML = `<button class="accept-btn">Yes, save it</button><button class="secondary reject-btn">Not quite</button>`;
         feed.appendChild(ctrl);
         const acceptBtn = ctrl.querySelector('.accept-btn');
-        const replyBtn = ctrl.querySelector('.reply-btn');
-        const replyBox = ctrl.querySelector('.reply-box');
-        const setCtrlBusy = (busy) => { acceptBtn.disabled = busy; replyBtn.disabled = busy; replyBox.disabled = busy; };
+        const rejectBtn = ctrl.querySelector('.reject-btn');
+        const setCtrlBusy = (busy) => { acceptBtn.disabled = busy; rejectBtn.disabled = busy; };
         acceptBtn.onclick = async () => {
           setCtrlBusy(true); setBusy(true);
           await post('/api/accept', { domain: ev.domain });
           setBusy(false); refresh();
         };
-        replyBtn.onclick = async () => {
-          if (!replyBox.value.trim()) return;
+        rejectBtn.onclick = async () => {
           setCtrlBusy(true); setBusy(true);
-          await post('/api/reply', { feedback: replyBox.value.trim(), domain: ev.domain });
-          replyBox.value = '';
+          await post('/api/reject', { domain: ev.domain });
           setBusy(false); refresh();
         };
       }
@@ -606,11 +603,12 @@ class Handler(BaseHTTPRequestHandler):
             # racing a THREAD.append/dict-write is a momentarily-stale
             # snapshot at worst, never corruption — list/dict ops are atomic
             # under the GIL — and the next 2s poll catches up regardless.
-            remaining = max(0, round(IDLE_SECONDS - (time.monotonic() - LAST_ACTIVITY))) if (THREAD and CURRENT) else None
+            remaining = max(0, round(IDLE_SECONDS - (time.monotonic() - LAST_ACTIVITY))) if (THREAD and AWAITING) else None
             self._send_json(
                 {
                     'thread': THREAD,
                     'pending': CURRENT,
+                    'awaiting': sorted(AWAITING),
                     'fitness_target_minutes': INTENTION['target_minutes'] if INTENTION else None,
                     'goal_achieved': GOAL_ACHIEVED,
                     'idle_seconds_remaining': remaining,
@@ -637,8 +635,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = handle_send((payload.get('message') or '').strip())
             elif self.path.startswith('/api/accept'):
                 result = handle_accept((payload.get('domain') or '').strip())
-            elif self.path.startswith('/api/reply'):
-                result = handle_reply((payload.get('feedback') or '').strip(), (payload.get('domain') or '').strip())
+            elif self.path.startswith('/api/reject'):
+                result = handle_reject((payload.get('domain') or '').strip())
             else:
                 self._send_json({'ok': False, 'error': 'unknown endpoint'}, status=404)
                 return

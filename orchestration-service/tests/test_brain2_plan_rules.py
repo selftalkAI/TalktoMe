@@ -52,3 +52,9 @@ def test_proactive_plans_stay_gentle_and_escalate_lighter() -> None:
     later = plan_rules.apply({}, {}, trigger='silence', escalation_level=2)
     assert first['stance'] == 'listen' and 'not the goal' in first['words']
     assert 'even lighter' in later['words']
+
+
+def test_asked_if_human_the_plan_says_it_is_an_ai() -> None:
+    plan = plan_rules.apply({}, {'asked_question': 'Are you a real person?'})
+    assert plan['moves'][0] == 'answer_question' and 'you are an AI' in plan['words']
+    assert 'Brain 2' not in plan['words']  # the Check rejects internal names, so the plan must not use them

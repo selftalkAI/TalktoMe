@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Code rules applied after Brain 2's Decide step (Building_Brain2.md §7):
@@ -13,6 +14,8 @@ MOVES = (
     'reflect', 'affirm', 'open_question', 'summarize', 'ask_permission',
     'offer_idea', 'celebrate', 'answer_question', 'follow_up', 'care',
 )
+
+_ASKS_IF_HUMAN_RE = re.compile(r'\b(are|r)\s+(you|u)\b.*\b(real|human|a person|a bot|an ai|ai|a robot|a machine)\b', re.IGNORECASE)
 
 _DEFAULT_MOVES = {
     'listen': ['reflect', 'open_question'],
@@ -66,6 +69,8 @@ def apply(
             stance = 'listen'
         moves = [m for m in moves if m != 'celebrate']
 
+    asks_if_human = bool(_ASKS_IF_HUMAN_RE.search(reading.get('asked_question') or ''))
+
     if reading.get('asked_question'):
         moves = ['answer_question'] + [m for m in moves if m not in ('answer_question', 'open_question')][:1]
         stance = 'teach' if stance in ('ask', 'listen', None) else stance
@@ -77,7 +82,10 @@ def apply(
     if question is None and 'open_question' in moves and 'answer_question' in moves:
         moves.remove('open_question')
 
-    return {'stance': stance, 'moves': moves, 'question': question, 'idea': idea, 'words': _words(stance, moves, question, idea, reading)}
+    words = _words(stance, moves, question, idea, reading)
+    if asks_if_human:
+        words += "\nFact: you are an AI — the assistant inside selfie.Me — not a person. Say so plainly and kindly, in your own words."
+    return {'stance': stance, 'moves': moves, 'question': question, 'idea': idea, 'words': words}
 
 
 def _default_stance(reading: dict[str, Any], checkin_mode: bool) -> str:
