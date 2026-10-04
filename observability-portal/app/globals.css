@@ -1251,3 +1251,37 @@ button:focus-visible {
 .fact-icon {
   font-size: 1rem;
 }
+
+/* Brain 1 + Brain 2 views (brain.tsx) */
+.view-switch { margin: 0.4rem 1rem 0.2rem; }
+.brain-chat { display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 5.5rem; }
+.chip-row { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.2rem; }
+.chip { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px;
+  padding: 0.35rem 0.8rem; font-size: 0.82rem; white-space: nowrap; cursor: pointer; text-transform: capitalize; }
+.chip.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+.voice-picker { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; font-size: 0.82rem; color: var(--muted); }
+.voice-picker select { border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.35rem 0.5rem; background: var(--surface); color: var(--text); }
+.chat-thread { display: flex; flex-direction: column; gap: 0.5rem; min-height: 40vh; }
+.chat-empty { text-align: center; margin-top: 2rem; }
+.bubble-row { display: flex; }
+.bubble-row.you { justify-content: flex-end; }
+.bubble-row.brain2 { justify-content: flex-start; }
+.chat-bubble { max-width: 82%; padding: 0.6rem 0.85rem; border-radius: 1rem; box-shadow: var(--card-shadow); font-size: 0.92rem; line-height: 1.45; }
+.chat-bubble p { margin: 0.15rem 0 0; white-space: pre-wrap; }
+.bubble-row.you .chat-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 0.3rem; }
+.bubble-row.brain2 .chat-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 0.3rem; }
+.chat-composer { position: sticky; bottom: 0.6rem; display: flex; gap: 0.5rem; align-items: flex-end; background: var(--bg); padding-top: 0.4rem; }
+.chat-composer textarea { flex: 1; resize: none; border: 1px solid var(--border); border-radius: 1rem; padding: 0.65rem 0.85rem; font-size: 0.92rem; background: var(--surface); }
+.chat-composer .composer-save { width: auto; padding: 0.65rem 1.1rem; }
+.mirror { display: flex; flex-direction: column; gap: 0.8rem; padding-bottom: 2rem; }
+.mirror-summary { background: var(--accent-soft); border-radius: 1rem; padding: 0.9rem 1rem; }
+.mirror-strength { margin: 0 0 0.5rem; font-weight: 600; color: var(--accent-dark); }
+.mirror-bar { height: 0.45rem; border-radius: 999px; background: #fff; overflow: hidden; }
+.mirror-bar div { height: 100%; background: var(--accent); }
+.mirror-section { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 0.8rem 1rem; }
+.mirror-section h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+.mirror-section ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+.mirror-section li { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.88rem; }
+.mirror-tag { flex-shrink: 0; font-size: 0.72rem; border-radius: 999px; padding: 0.1rem 0.5rem; height: fit-content; }
+.mirror-tag.sure { background: var(--accent-soft); color: var(--accent-dark); }
+.mirror-tag.guess { background: var(--peach); color: var(--peach-ink); }

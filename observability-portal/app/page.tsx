@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import Login from './login';
 import Onboarding, { Profile } from './onboarding';
 import Welcome from './welcome';
+import { BrainChat, MirrorView } from './brain';
 
 const API_BASE = 'http://localhost:8000';
 // Only the email is persisted — never a password. On reload, it's used to
@@ -91,6 +92,8 @@ const SOURCE_META: Record<Source, { icon: string; label: string }> = {
 
 export default function HomePage() {
   const [composerOpen, setComposerOpen] = useState(false);
+  // Today = the existing moments journal; Talk = Brain 2 conversation; Me = Brain 1's mirror view.
+  const [view, setView] = useState<'today' | 'talk' | 'me'>('today');
   const dragControls = useDragControls();
 
   // The app always STARTS on login, but a reload shouldn't act like a fresh
@@ -524,7 +527,18 @@ export default function HomePage() {
         </div>
       </header>
 
+      <div className="segmented view-switch" role="tablist" aria-label="View">
+        {(['today', 'talk', 'me'] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'segment selected' : 'segment'} onClick={() => setView(v)}>
+            {v === 'today' ? 'Today' : v === 'talk' ? 'Talk' : 'Me'}
+          </button>
+        ))}
+      </div>
+
       <main className="app-content">
+        {view === 'talk' && <BrainChat apiBase={API_BASE} email={profile.email} />}
+        {view === 'me' && <MirrorView apiBase={API_BASE} email={profile.email} />}
+        {view === 'today' && (
         <motion.section
           className="today"
           initial={{ opacity: 0, y: 8 }}
@@ -659,8 +673,10 @@ export default function HomePage() {
             </div>
           )}
         </motion.section>
+        )}
       </main>
 
+      {view === 'today' && (
       <nav className="tab-bar">
         <motion.button
           type="button"
@@ -674,6 +690,7 @@ export default function HomePage() {
           </svg>
         </motion.button>
       </nav>
+      )}
 
       <AnimatePresence>
         {composerOpen && (
