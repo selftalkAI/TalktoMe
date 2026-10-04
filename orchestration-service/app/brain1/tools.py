@@ -6,7 +6,7 @@ from typing import Any, Callable
 from .. import memory_repo
 from ..brain2 import intentions_repo
 from ..db import get_connection
-from . import knowledge
+from . import consent, knowledge
 
 # Tools Brain 1's core agents can use while investigating (Building_Brain1.md
 # §10.3). Each takes the person's email plus plain arguments and returns
@@ -21,11 +21,13 @@ _WORD_RE = re.compile(r"[a-z']{3,}")
 def search_memories(profile_email: str, query: str = '', **_: Any) -> str:
     """What they have told us, best keyword match first."""
     terms = set(_WORD_RE.findall((query or '').lower()))
+    allowed = consent.allowed_categories(profile_email)
     rows = [
         m
         for status in (memory_repo.ACTIVE, memory_repo.REQUIRES_CONFIRMATION)
         for m in memory_repo.list_memories(profile_email, status=status)
-        if m.get('sensitivity_tier') != 'T3' and not (m.get('domain') or '').startswith('brain1_')
+        if consent.shareable(m, allowed) and not (m.get('domain') or '').startswith('brain1_')
+        and not (m.get('sensitivity_tier') == 'T3' and m['status'] != memory_repo.ACTIVE)
     ]
     scored = sorted(rows, key=lambda m: len(terms & set(_WORD_RE.findall(m['content'].lower()))), reverse=True)
     hits = [m for m in scored if not terms or terms & set(_WORD_RE.findall(m['content'].lower()))][:MAX_MEMORIES]

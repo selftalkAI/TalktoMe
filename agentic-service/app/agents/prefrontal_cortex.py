@@ -16,112 +16,6 @@ from ._graph import router_graph, run
 # distinction `router_graph` exists to express.
 
 
-def _reflect_moment(payload: dict[str, Any]) -> dict[str, Any]:
-    """Connects one new moment to this person's own past — grounded only in
-
-    their own moments and durable memories, never outside facts or advice.
-
-    Also grounded in who they actually are (age, location, interests — real,
-    self-stated facts from their own profile, not outside knowledge) so the
-    reflection can be calibrated to them, not generic. This is a different
-    kind of input than World Knowledge: these are facts Brain 1 already gave
-    us about themselves, not expertise fetched from outside.
-    """
-    moment = payload['moment']
-    past_moments: list[dict[str, Any]] = payload.get('past_moments', [])
-    relevant_memories: list[dict[str, Any]] = payload.get('relevant_memories', [])
-    context_lines = [_shared.format_moment(m) for m in past_moments]
-    memory_lines = [f"- ({m.get('type')}) {m.get('content')}" for m in relevant_memories]
-    who_lines = _shared.profile_lines(payload)
-
-    system_prompt = (
-        "You are reflecting ONE person's own thoughts back to them. Everything you say must be "
-        "grounded ONLY in the moments and durable memories listed below, which are all authored "
-        "by or true of this same person, plus the basic facts about who they are (age, location, "
-        "interests) also listed below — those are real, self-stated facts, not outside knowledge, "
-        "so you may use them to calibrate tone and relevance, but NEVER to assume anything about "
-        "their life you weren't actually told (e.g. knowing their age is not license to assume "
-        "what a person that age is 'usually' going through). You must NEVER introduce outside "
-        "facts, other people's opinions, general knowledge, or generic advice that isn't grounded "
-        "in their own words. If nothing in their past connects to today's moment, say plainly that "
-        "this feels new rather than inventing a connection. Write directly to them, in second "
-        "person ('you').\n\n"
-        "Before anything else: if today's moment carries real emotional weight (tired, sick, "
-        "upset, anxious, low) — acknowledge that feeling directly and specifically, in your own "
-        "words, before doing anything else. A pattern-connection ('this is new', 'this echoes "
-        "X') is a secondary job; noticing how they actually feel comes first. Do not default to "
-        "reporting on novelty when there's a real feeling sitting right there to respond to.\n\n"
-        + (
-            "THERE IS NO PAST HISTORY FOR THIS PERSON YET — the 'past moments' list below is "
-            "empty. This means you MUST NOT reference any prior event, pattern, or occurrence, "
-            "under any phrasing — no 'like when', 'again', 'lately', 'you've been', 'this time', "
-            "or any implied history. You have exactly the one moment below and nothing else. "
-            "Acknowledging their feeling means responding to what's written below, in this "
-            "moment only — it does NOT mean inventing a past to make the feeling sound more "
-            "understood. If you catch yourself describing any event, activity, or circumstance "
-            "that isn't in the text below, delete it before responding.\n\n"
-            if not context_lines
-            else ""
-        )
-        + "Hard length limit: 1-2 sentences. Not three paragraphs compressed into one — actually "
-        "1-2 sentences, short enough to read in three seconds. If you're restating what they just "
-        "said in different words, you've already gone too long — cut it.\n\n"
-        "Banned moves, because they're what makes a reflection feel padded and forgettable: "
-        "restating their own moment back to them ('it sounds like you...', 'you're acknowledging "
-        "...'), narrating your own reasoning process ('one observation is...', 'this could be "
-        "influencing...'), and hedging ('might be', 'likely', 'could be a good foundation'). Just "
-        "say the specific thing, plainly, like a friend who actually noticed something — not a "
-        "therapist summarizing a session.\n\n"
-        "Pick ONE real, specific move — acknowledge the feeling, or name a real connection to "
-        "their own past, or (only if truly nothing fits) say plainly this is new — and either "
-        "state it as a sharp observation or ask one direct question about it. Never stack more "
-        "than one move. Never both a summary AND an observation AND a question — pick one and stop."
-        + _shared.narrative_focus_clause(payload)
-    )
-    prompt = (
-        (('Who they are:\n' + '\n'.join(who_lines) + '\n\n') if who_lines else '')
-        + 'Your past moments (oldest to newest):\n'
-        + ('\n'.join(context_lines) if context_lines else '(no earlier moments yet — this is your first.)')
-        + ('\n\nWhat we durably know about them:\n' + '\n'.join(memory_lines) if memory_lines else '')
-        + f"\n\nToday's moment (felt: {moment.get('mood') or 'unspecified'}): {moment['content']}"
-        + "\n\nReflect on today's moment."
-    )
-
-    provider = get_model_provider()
-    response_text = provider.chat([{'role': 'user', 'content': prompt}], system=system_prompt)
-    return {'reflection': response_text, 'referenced_past_count': len(context_lines)}
-
-
-def _evolution_narrative(payload: dict[str, Any]) -> dict[str, Any]:
-    """Summarizes how this person has changed over a period — grounded only
-
-    in their own moments from that period.
-    """
-    moments: list[dict[str, Any]] = payload.get('moments', [])
-    if len(moments) < 2:
-        return {
-            'narrative': (
-                "There isn't enough history yet to see a pattern — keep capturing moments "
-                "and this will fill in."
-            )
-        }
-
-    context_lines = [_shared.format_moment(m) for m in moments]
-    system_prompt = (
-        "You are summarizing how ONE person has changed over a period of time, using ONLY the "
-        "moments they themselves recorded below. Never introduce outside facts, other people, or "
-        "generic self-help language. Write 3-5 sentences, directly to them ('you'), noting any real "
-        "shifts in mood, recurring themes, or a change in how they talk about the same topic over "
-        "time. If there's no clear shift, say so honestly instead of inventing one."
-        + _shared.narrative_focus_clause(payload)
-    )
-    prompt = 'Moments from this period (oldest to newest):\n' + '\n'.join(context_lines)
-
-    provider = get_model_provider()
-    response_text = provider.chat([{'role': 'user', 'content': prompt}], system=system_prompt)
-    return {'narrative': response_text}
-
-
 def _suggest_next_step(payload: dict[str, Any]) -> dict[str, Any]:
     """Decides what this person actually needs right now, acting on Sensory
 
@@ -132,7 +26,6 @@ def _suggest_next_step(payload: dict[str, Any]) -> dict[str, Any]:
     interests: list[str] = payload.get('interests') or []
     mood_summary = (payload.get('mood_summary') or '').strip()
     context_notes = (payload.get('context_notes') or '').strip()
-    recent_moments: list[dict[str, Any]] = payload.get('recent_moments') or []
 
     lines = [f'Name: {full_name}']
     if interests:
@@ -141,21 +34,18 @@ def _suggest_next_step(payload: dict[str, Any]) -> dict[str, Any]:
         lines.append(f'How they seem to be feeling right now: {mood_summary}')
     if context_notes:
         lines.append(f'Specific things they mentioned: {context_notes}')
-    if recent_moments:
-        lines.append('Their own recent moments (oldest to newest):')
-        lines.extend(_shared.format_moment(m) for m in recent_moments)
 
     system_prompt = (
         "You are deciding what ONE person needs right now, using ONLY what another agent "
         "already understood about them below — their profile, how they currently seem to "
-        "be feeling, and their own past moments if any. Never introduce outside facts, "
+        "be feeling. Never introduce outside facts, "
         "other people, or generic self-help language; if they seem to be struggling, be "
         "gentle and specific rather than falsely upbeat. Respond with strict JSON only, no "
         'markdown fencing, matching exactly this shape: {"welcome_message": "...", '
         '"suggested_first_action": "..."}.\n'
         '- welcome_message: 1-2 sentences, second person, using their first name, that '
         "acknowledge how they say they're feeling right now (not a generic greeting).\n"
-        '- suggested_first_action: one concrete, specific thing to capture as a moment '
+        '- suggested_first_action: one concrete, specific thing they could talk to Brain 2 about '
         "today, grounded in their interests and current mood/context — never generic advice."
     )
     prompt = 'What is understood about this person right now:\n' + '\n'.join(lines)
@@ -234,30 +124,60 @@ def _normalise_plan(parsed: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _find_patterns(payload: dict[str, Any]) -> dict[str, Any]:
+    """Brain 1's Reflective mode (Building_Brain1.md §14.3, Scenario 8): looks
+    across weeks of what the person said and did for a pattern THEY may not
+    have noticed. Each pattern must be backed by at least two separate pieces
+    of evidence quoted exactly from the items given; Orchestration re-checks
+    those quotes and drops anything that isn't really there. A pattern is
+    only ever a hypothesis to show them, never a fact about them.
+    """
+    items: list[str] = [i for i in payload.get('items') or [] if isinstance(i, str) and i.strip()]
+    known: list[str] = payload.get('known_patterns') or []
+    if len(items) < 3:
+        return {'patterns': []}
+    numbered = '\n'.join(f'[{n + 1}] {item}' for n, item in enumerate(items))
+    system_prompt = (
+        "You look across one person's notes from several weeks for a pattern they may not have noticed — "
+        'e.g. a setback that keeps happening under the same circumstances, or something that reliably helps. '
+        'Only report a pattern that at least two DIFFERENT notes clearly show. Never diagnose, never judge, '
+        'never guess at causes the notes do not state. If there is no clear pattern, return none.\n'
+        + (f'Already known (do not repeat): {"; ".join(known)}\n' if known else '')
+        + 'Return JSON only: {"patterns": [{"pattern": "one plain sentence, written to them as you", '
+        '"evidence": ["exact short phrase copied from a note", "exact short phrase from a different note"]}]} '
+        '— at most 2 patterns.'
+    )
+    response = get_model_provider('large').chat([{'role': 'user', 'content': numbered}], system=system_prompt)
+    parsed = _shared.parse_json_object(response)
+    patterns = []
+    for p in parsed.get('patterns') or []:
+        if isinstance(p, dict) and isinstance(p.get('pattern'), str) and isinstance(p.get('evidence'), list):
+            patterns.append({'pattern': p['pattern'].strip(), 'evidence': [e for e in p['evidence'] if isinstance(e, str)][:4]})
+    return {'patterns': patterns[:2]}
+
+
 _GRAPH = router_graph(
     {
-        'reflect_moment': _reflect_moment,
-        'evolution_narrative': _evolution_narrative,
         'suggest_next_step': _suggest_next_step,
         'plan_reply': _plan_reply,
+        'find_patterns': _find_patterns,
     },
-    default='reflect_moment',
+    default='suggest_next_step',
 )
 
 
 class PrefrontalCortex:
     """Higher-order reasoning (ADD §8): connects past to present, decides
 
-    what's needed next. Four nodes routed by `operation`: `reflect_moment`,
-    `evolution_narrative`, `suggest_next_step`, and `plan_reply` (Brain 2's
-    Decide step).
+    what's needed next. Routed by `operation`: `suggest_next_step` (the welcome), `plan_reply`
+    (Brain 2's Decide step) and `find_patterns` (Brain 1's reflection).
     """
 
     name = 'prefrontal_cortex'
 
     def plan(self, goal: str) -> list[PlanStep]:
         payload = json.loads(goal)
-        operation = payload.get('mode') or payload.get('operation') or 'reflect_moment'
+        operation = payload.get('mode') or payload.get('operation') or 'suggest_next_step'
         return [
             PlanStep(
                 tool='prefrontal_cortex',

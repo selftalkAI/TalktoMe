@@ -69,10 +69,8 @@ def upsert_profile(
 def set_understanding(email: str, mood_summary: str, context_notes: str, narrative_focus: str) -> None:
     """Stores what Sensory Cortex understood about this person from the conversation —
 
-    every later Prefrontal Cortex call (reflect_moment, evolution_narrative,
-    suggest_next_step) for this profile pulls this back out and folds it into
-    its own prompt, so the understanding actually shapes what gets written
-    from here on.
+    the onboarding check-in's read on how they are (kept on the profile so it
+    is available after the welcome screen).
     """
     with get_connection() as conn:
         conn.execute(

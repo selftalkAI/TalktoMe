@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from .. import memory_repo
-from . import episodes, learning, profile
+from . import episodes, learning, patterns, profile
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,12 @@ def run_for_profile(profile_email: str) -> dict[str, Any]:
         return _reflect(profile_email)
     except Exception:  # noqa: BLE001 - one person's reflection must never stop the nightly cycle
         logger.exception('Brain 1 Reflector failed for %s', profile_email)
-        return {'strategies': [], 'retired': [], 'episodes': [], 'profile_version': None}
+        return {'strategies': [], 'retired': [], 'episodes': [], 'patterns': [], 'profile_version': None}
 
 
 def _reflect(profile_email: str) -> dict[str, Any]:
     episodes_written = episodes.consolidate_finished(profile_email)
+    patterns_found = patterns.detect(profile_email)
     w = learning.weights(profile_email)
     good, bad = learning.preferred(profile_email, w), learning.avoided(profile_email, w)
 
@@ -66,6 +67,7 @@ def _reflect(profile_email: str) -> dict[str, Any]:
 
     version = profile.save_version(profile_email, profile.build(profile_email), reason='reflection')
     return {'strategies': written, 'retired': retired, 'episodes': [e['content'] for e in episodes_written],
+            'patterns': [p['content'] for p in patterns_found],
             'profile_version': version['version'] if version else None}
 
 

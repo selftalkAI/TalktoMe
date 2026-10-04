@@ -8,21 +8,12 @@ from .paths import SQL_STORAGE_DIR
 
 # Local, file-based SQL storage (SQLite) — the "local host SQL database"
 # under Storage/sql_storage/. No server process to run; this is a single
-# file on disk, which is the durable copy of Moments (ADD §11 durability
-# note) for local/dev use ahead of the Postgres migration in the ADD/TDD.
+# file on disk — the durable copy of profiles, memories, Brain 1 and the
+# conversation for local/dev use ahead of the Postgres migration in the ADD/TDD.
+# (Databases created before V03 may still hold a `moments` table; nothing reads it.)
 DB_PATH = SQL_STORAGE_DIR / 'selfie_me.db'
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS moments (
-    id TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL,
-    source TEXT NOT NULL,
-    content TEXT NOT NULL,
-    mood TEXT,
-    photo_data_url TEXT,
-    reflection TEXT,
-    profile_email TEXT
-);
 
 CREATE TABLE IF NOT EXISTS profiles (
     email TEXT PRIMARY KEY,
@@ -41,7 +32,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 -- Durable, governed personal memory (ADD §6's "Memory" layer) — distinct from
--- `moments` (raw evidence) and the `profiles` snapshot fields (latest-only,
+-- the raw conversation (`conversation_turns`) and the `profiles` snapshot fields (latest-only,
 -- no history). A row here is typed, carries provenance, and is corrected by
 -- superseding (supersedes_id) rather than overwritten in place, so history is
 -- never destroyed (TDD §5.3).
@@ -80,8 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_memories_profile_status ON memories(profile_email
 -- DB where this CREATE TABLE is a no-op and `domain` doesn't exist yet.
 
 -- General RAG knowledge sources (ADD "Files and ingestion" domain) — distinct
--- from `memories` (governed facts about the person) and `moments` (their own
--- captured entries). A document is chunked on ingest; chunks are derivative
+-- from `memories` (governed facts about the person) and the conversation. A document is chunked on ingest; chunks are derivative
 -- (rebuildable from the document) and carry the owner scope forward.
 CREATE TABLE IF NOT EXISTS rag_documents (
     document_id TEXT PRIMARY KEY,
@@ -233,6 +223,15 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_turns ON conversation_turns(profile_email, domain, created_at);
+-- Per-category opt-in for T3 (health, finances) — ADD §7.1, FSD FR-MEM-011, BR-018.
+-- No row = never asked; granted = 0 means she said no.
+CREATE TABLE IF NOT EXISTS brain1_consents (
+    profile_email TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('health', 'finances')),
+    granted INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (profile_email, category)
+);
 """
 
 
@@ -245,13 +244,6 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
-        # Migration for DBs created before moments were scoped per profile —
-        # must run before the index below, which needs the column to exist.
-        cols = {row['name'] for row in conn.execute('PRAGMA table_info(moments)').fetchall()}
-        if 'profile_email' not in cols:
-            conn.execute('ALTER TABLE moments ADD COLUMN profile_email TEXT')
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_moments_profile_email ON moments(profile_email)')
-
         profile_cols = {row['name'] for row in conn.execute('PRAGMA table_info(profiles)').fetchall()}
         for column in ('narrative_focus', 'mood_summary', 'context_notes', 'password_hash'):
             if column not in profile_cols:

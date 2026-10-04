@@ -1285,3 +1285,11 @@ button:focus-visible {
 .mirror-tag { flex-shrink: 0; font-size: 0.72rem; border-radius: 999px; padding: 0.1rem 0.5rem; height: fit-content; }
 .mirror-tag.sure { background: var(--accent-soft); color: var(--accent-dark); }
 .mirror-tag.guess { background: var(--peach); color: var(--peach-ink); }
+.mirror-section li { flex-direction: column; align-items: stretch; gap: 0.25rem; }
+.mirror-row { display: flex; justify-content: space-between; gap: 0.6rem; }
+.mirror-actions { display: flex; gap: 0.4rem; }
+.mirror-actions button { border: none; background: none; padding: 0; font-size: 0.75rem; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.mirror-actions button:disabled { opacity: 0.5; cursor: default; }
+.mirror-edit { flex: 1; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.3rem 0.5rem; font-size: 0.88rem; }
+.consent-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; padding: 0.25rem 0; }
+.consent-card { border: 1px dashed var(--peach-ink); }

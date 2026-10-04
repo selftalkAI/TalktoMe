@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,7 +11,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import brain1, conversations_repo, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from . import brain1, conversations_repo, memory_manager, memory_repo, profiles_repo, rag_manager, rag_store
+from .brain1 import consent as brain1_consent
 from .brain1 import here_now as brain1_here_now
 from .brain1 import persona_selector
 from .brain1 import learning as brain1_learning
@@ -65,9 +66,8 @@ app = FastAPI(
     title='selfie.Me Orchestration Service',
     version='0.2.0',
     description=(
-        'API layer + data layer for selfie.Me. Owns Moments (this person\'s own captured '
-        'thoughts) and reflects them back using only that person\'s own history — never '
-        'outside opinions, other people\'s data, or generic advice.'
+        'API layer + data layer for selfie.Me: profiles, memories, Brain 1 (the person\'s '
+        'structured, evolving model) and the Brain 1 <-> Brain 2 conversation.'
     ),
     lifespan=_lifespan,
 )
@@ -79,35 +79,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-
-# A moment's photo attachment is stored inline for MVP (no object storage wired yet).
-# Kept intentionally small so a single process's memory can't be exhausted by uploads.
-MAX_PHOTO_DATA_URL_LENGTH = 2_000_000  # ~1.5MB image, base64-encoded
-
-
-class MomentIn(BaseModel):
-    profile_email: str = Field(..., min_length=3, description='Which profile this moment belongs to')
-    source: str = Field(..., description="'text', 'voice', or 'photo'")
-    content: str = Field(..., min_length=1, description='What you said, typed, or transcribed')
-    mood: str | None = Field(default=None, description='How you were feeling, in your own word')
-    photo_data_url: str | None = Field(default=None, description='Optional small inline image (data URL)')
-
-
-class MomentOut(BaseModel):
-    id: str
-    created_at: datetime
-    source: str
-    content: str
-    mood: str | None = None
-    photo_data_url: str | None = None
-    reflection: str | None = None
-
-
-class ReflectionOut(BaseModel):
-    moment_id: str
-    reflection: str
-    referenced_past_count: int
-
 
 class ChatCompletionIn(BaseModel):
     prompt: str = Field(..., min_length=1)
@@ -313,19 +284,6 @@ def login_profile(email: str, payload: LoginIn) -> ProfileOut:
     return ProfileOut(**row)
 
 
-@app.get('/api/v1/brain1/{email}/key-areas')
-def brain1_key_areas(email: str) -> list[dict[str, Any]]:
-    """Brain 1's key areas (ADD §6.1: skill/emotion/learning/reading, plus
-
-    any custom domain this person has actually used) with Brain 2's current,
-    honest status for each — an accepted entry if one exists, how many
-    active memories feed it, and whether something is waiting for review.
-    """
-    if profiles_repo.get_profile(email) is None:
-        raise HTTPException(status_code=404, detail=f'No profile for {email}')
-    return brain1.key_areas_overview(email)
-
-
 class VoicePreferenceIn(BaseModel):
     voice: str | None = Field(None, description="friend, coach, big_sister, big_brother, mother_like — or null to let Brain 1 choose")
 
@@ -365,11 +323,38 @@ def brain_turn(email: str, payload: ConversationTurnIn) -> dict[str, Any]:
     intention = brain2_intentions_repo.get_active_intention(email, payload.domain)
     conversation = payload.conversation or conversations_repo.as_messages(conversations_repo.current_session(email, payload.domain))
     turn = brain2.converse(email, payload.domain, payload.message, conversation=conversation, intention=intention)
+    new_memories: list[dict[str, Any]] = []
     if turn['safety'] != brain1_safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
-        memory_manager.remember_from_text(
+        new_memories = memory_manager.remember_from_text(
             profile_email=email, source_text=payload.message, source_type='conversation', source_id=f'turn-{payload.domain}'
         )
+    # First time something private (health, finances) comes up: ask before using it (FR-MEM-011).
+    turn['consent_requests'] = brain1_consent.pending_requests(email, new_memories)
     return turn
+
+
+class ConsentIn(BaseModel):
+    granted: bool
+
+
+@app.get('/api/v1/brain1/{email}/consents')
+def brain1_get_consents(email: str) -> dict[str, Any]:
+    """Her opt-ins for private categories: true, false, or null (never asked)."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    return brain1_consent.status(email)
+
+
+@app.put('/api/v1/brain1/{email}/consents/{category}')
+def brain1_set_consent(email: str, category: str, payload: ConsentIn) -> dict[str, Any]:
+    """Opting in lets Brain 2 use her own explicit statements in that category;
+    opting out takes them all back out of use."""
+    if profiles_repo.get_profile(email) is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    try:
+        return brain1_consent.set_consent(email, category, payload.granted)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get('/api/v1/brain/{email}/conversation')
@@ -405,6 +390,18 @@ def brain1_reflect(email: str) -> dict[str, Any]:
     if profiles_repo.get_profile(email) is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
     return {**brain1_reflector.run_for_profile(email), 'learned': brain1_learning.weights(email)}
+
+
+class QuestionStatusIn(BaseModel):
+    status: str = Field(..., pattern='^(dropped|answered)$')
+
+
+@app.patch('/api/v1/brain1/{email}/questions/{question_id}')
+def brain1_question_status(email: str, question_id: str, payload: QuestionStatusIn) -> dict[str, Any]:
+    """Skip a question she doesn't want Brain 2 to ask."""
+    if not brain1_profile.set_question_status(email, question_id, payload.status):
+        raise HTTPException(status_code=404, detail=f'Unknown question {question_id}')
+    return {'question_id': question_id, 'status': payload.status}
 
 
 @app.get('/api/v1/brain1/{email}/runs/{run_id}')
@@ -450,9 +447,8 @@ def respond_to_conversation(email: str, payload: ConversationRespondIn) -> Conve
     Sensory Cortex turns that into structured understanding (mood, context,
     narrative focus) — still no advice, no suggestions. That understanding is then
     handed to Prefrontal Cortex, which is the one that actually decides what this
-    person needs and produces the welcome + suggested first moment. Understanding is
-    also persisted on the profile so it keeps shaping reflections and the evolution
-    narrative afterward, not just this one screen.
+    person needs and produces the welcome + a suggested first thing to talk about.
+    What they said is also remembered (Hippocampus), so Brain 1 knows it from day one.
     """
     row = profiles_repo.get_profile(email)
     if row is None:
@@ -475,14 +471,12 @@ def respond_to_conversation(email: str, payload: ConversationRespondIn) -> Conve
         full_name=row['full_name'],
     )
 
-    recent_moments = [_moment_payload(MomentOut(**m)) for m in moments_repo.list_moments(email)[:10]]
     decision = _run_prefrontal_cortex(
         'suggest_next_step',
         full_name=row['full_name'],
         interests=row['interests'],
         mood_summary=mood_summary,
         context_notes=context_notes,
-        recent_moments=list(reversed(recent_moments)),  # oldest to newest
     )
 
     return ConversationRespondOut(
@@ -492,48 +486,6 @@ def respond_to_conversation(email: str, payload: ConversationRespondIn) -> Conve
         context_notes=context_notes,
         narrative_focus=narrative_focus,
     )
-
-
-@app.post('/api/v1/moments', response_model=MomentOut)
-def create_moment(payload: MomentIn) -> MomentOut:
-    if payload.photo_data_url and len(payload.photo_data_url) > MAX_PHOTO_DATA_URL_LENGTH:
-        raise HTTPException(status_code=413, detail='Photo is too large for this MVP (limit ~1.5MB).')
-
-    row = moments_repo.create_moment(
-        profile_email=payload.profile_email,
-        source=payload.source,
-        content=payload.content,
-        mood=payload.mood,
-        photo_data_url=payload.photo_data_url,
-    )
-    rag_store.index_moment(row['id'], row['content'], payload.profile_email)
-    profile = profiles_repo.get_profile(payload.profile_email)
-
-    memory_manager.remember_from_text(
-        profile_email=payload.profile_email,
-        source_text=row['content'],
-        source_type='moment',
-        source_id=row['id'],
-        full_name=profile['full_name'] if profile else None,
-    )
-
-    return MomentOut(**row)
-
-
-@app.get('/api/v1/moments', response_model=list[MomentOut])
-def list_moments(profile_email: str = Query(..., min_length=3)) -> list[MomentOut]:
-    return [MomentOut(**row) for row in moments_repo.list_moments(profile_email)]  # already most recent first
-
-
-def _find_moment(moment_id: str, profile_email: str) -> MomentOut:
-    row = moments_repo.get_moment(moment_id, profile_email)
-    if row is None:
-        raise HTTPException(status_code=404, detail=f'Unknown moment {moment_id}')
-    return MomentOut(**row)
-
-
-def _moment_payload(moment: MomentOut) -> dict[str, Any]:
-    return {'content': moment.content, 'mood': moment.mood, 'created_at': moment.created_at.isoformat()}
 
 
 @app.get('/api/v1/memories', response_model=list[MemoryOut])
@@ -691,109 +643,8 @@ def _run_agent(agent_name: str, goal_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_prefrontal_cortex(mode: str, **payload: Any) -> dict[str, Any]:
-    """`reflect_moment`/`evolution_narrative`/`suggest_next_step` all live on
-
-    Prefrontal Cortex now (ADD §8's body-region naming) — one agent, three
-    routed operations, since all three are the same job (reasoning from past
-    to present to decide what's next), not three unrelated capabilities.
-    """
+    """Runs one Prefrontal Cortex operation (e.g. `suggest_next_step` for the welcome)."""
     return _run_agent('prefrontal_cortex', {'mode': mode, **payload})
-
-
-def _all_moments(profile_email: str) -> list[MomentOut]:
-    return [MomentOut(**row) for row in moments_repo.list_moments(profile_email)]  # most recent first
-
-
-def _understanding_for(profile_email: str) -> dict[str, str]:
-    """Sensory Cortex's read on this person, if a conversation has ever run for them —
-
-    threaded into every Prefrontal Cortex call below so what they told us about
-    themselves, and how they said they were feeling, actually shapes how their
-    reflections and evolution narrative get written.
-    """
-    row = profiles_repo.get_profile(profile_email)
-    if not row:
-        return {'narrative_focus': '', 'mood_summary': '', 'context_notes': ''}
-    return {
-        'narrative_focus': row.get('narrative_focus') or '',
-        'mood_summary': row.get('mood_summary') or '',
-        'context_notes': row.get('context_notes') or '',
-    }
-
-
-@app.post('/api/v1/moments/{moment_id}/reflect', response_model=ReflectionOut)
-def reflect_on_moment(moment_id: str, profile_email: str = Query(..., min_length=3)) -> ReflectionOut:
-    """Reflects one moment back using ONLY this person's own prior moments as context —
-
-    routed through Prefrontal Cortex's agent run, so it's planned, policy-checked
-    (READ_ONLY, auto-approved), and recorded in an audit trail like any other agent action.
-    """
-    moment = _find_moment(moment_id, profile_email)
-    recent_others = [m for m in _all_moments(profile_email) if m.id != moment_id][:30]
-    past_moments = list(reversed(recent_others))  # oldest to newest, matching Prefrontal Cortex's prompt contract
-    relevant_memories = memory_manager.recall(profile_email, moment.content, top_k=5)
-    profile_row = profiles_repo.get_profile(profile_email)
-
-    result = _run_prefrontal_cortex(
-        'reflect_moment',
-        moment=_moment_payload(moment),
-        past_moments=[_moment_payload(m) for m in past_moments],
-        relevant_memories=[{'type': m['type'], 'content': m['content']} for m in relevant_memories],
-        **_understanding_for(profile_email),
-        **(_profile_facts(profile_row) if profile_row else {}),
-    )
-
-    moments_repo.set_reflection(moment.id, profile_email, result['reflection'])
-    return ReflectionOut(
-        moment_id=moment.id,
-        reflection=result['reflection'],
-        referenced_past_count=result.get('referenced_past_count', 0),
-    )
-
-
-@app.get('/api/v1/evolution')
-def evolution(profile_email: str = Query(..., min_length=3), days: int = Query(default=30, ge=1, le=3650)) -> dict[str, Any]:
-    """Purely computed from this person's own stored moments — no model call, no outside data."""
-    now = datetime.now(timezone.utc)
-    window_cutoff = now - timedelta(days=days)
-    today = now.date()
-
-    all_moments = _all_moments(profile_email)
-    in_window = [m for m in all_moments if m.created_at >= window_cutoff]
-    today_moments = [m for m in all_moments if m.created_at.date() == today]
-    earlier_than_window = [m for m in all_moments if m.created_at < window_cutoff]
-
-    mood_counts: dict[str, int] = {}
-    for m in in_window:
-        key = m.mood or 'unspecified'
-        mood_counts[key] = mood_counts.get(key, 0) + 1
-
-    return {
-        'range_days': days,
-        'total_moments_all_time': len(all_moments),
-        'moments_in_range': len(in_window),
-        'moments_today': len(today_moments),
-        'mood_counts_in_range': mood_counts,
-        'has_history_before_range': len(earlier_than_window) > 0,
-    }
-
-
-@app.get('/api/v1/evolution/narrative')
-def evolution_narrative(
-    profile_email: str = Query(..., min_length=3), days: int = Query(default=30, ge=1, le=3650)
-) -> dict[str, Any]:
-    """An AI-written 'how you've changed' summary — routed through Prefrontal Cortex's agent run."""
-    now = datetime.now(timezone.utc)
-    window_cutoff = now - timedelta(days=days)
-    in_window = [m for m in _all_moments(profile_email) if m.created_at >= window_cutoff]
-    oldest_to_newest = list(reversed(in_window))
-
-    result = _run_prefrontal_cortex(
-        'evolution_narrative',
-        moments=[_moment_payload(m) for m in oldest_to_newest],
-        **_understanding_for(profile_email),
-    )
-    return {'range_days': days, 'narrative': result.get('narrative', '')}
 
 
 @app.post('/api/v1/model/complete', response_model=ChatCompletionOut)

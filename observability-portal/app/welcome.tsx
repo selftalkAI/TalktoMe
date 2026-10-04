@@ -74,7 +74,7 @@ export default function Welcome({
                       result.suggested_first_action ? onStartWithSuggestion(result.suggested_first_action) : onContinue()
                     }
                   >
-                    {result.suggested_first_action ? 'Log this moment' : "Let's go"} <span aria-hidden>→</span>
+                    {result.suggested_first_action ? 'Talk about this' : "Let's go"} <span aria-hidden>→</span>
                   </motion.button>
 
                   {result.suggested_first_action && (

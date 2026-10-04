@@ -29,3 +29,18 @@ def test_empty_episode_needs_no_model() -> None:
 def test_safety_check_normalises(monkeypatch: pytest.MonkeyPatch, reply: str, level: str) -> None:
     monkeypatch.setattr(amygdala, 'get_model_provider', lambda tier=None: Fake(reply))
     assert amygdala._safety_check({'message': 'something'})['level'] == level
+
+
+def test_find_patterns_needs_enough_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents import prefrontal_cortex
+    called = []
+    monkeypatch.setattr(prefrontal_cortex, 'get_model_provider', lambda tier=None: called.append(1) or Fake('{}'))
+    assert prefrontal_cortex._find_patterns({'items': ['a', 'b']}) == {'patterns': []} and called == []
+
+
+def test_find_patterns_normalises(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents import prefrontal_cortex
+    monkeypatch.setattr(prefrontal_cortex, 'get_model_provider', lambda tier=None: Fake(
+        '{"patterns": [{"pattern": " Misses follow sick-kid weeks. ", "evidence": ["kids sick", 3, "kids were sick again"]}, "junk"]}'))
+    result = prefrontal_cortex._find_patterns({'items': ['n1', 'n2', 'n3']})
+    assert result == {'patterns': [{'pattern': 'Misses follow sick-kid weeks.', 'evidence': ['kids sick', 'kids were sick again']}]}

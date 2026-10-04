@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .. import conversations_repo, memory_repo, profiles_repo
+from ..brain1 import consent as brain1_consent
 from ..brain1 import episodes as brain1_episodes
 from ..brain1 import learning as brain1_learning
 from ..brain1 import profile as brain1_profile
@@ -224,10 +225,11 @@ def propose_refinement(
     snapshot written by Broca `profile_narrative`, grounded in this area's
     non-T3 memories and goal history.
     """
+    allowed = brain1_consent.allowed_categories(profile_email)
     domain_memories = [
         m
         for m in memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
-        if m.get('sensitivity_tier') != 'T3'
+        if brain1_consent.shareable(m, allowed)
     ]
     previous = profile_store.get_accepted(profile_email, domain)
     payload: dict[str, Any] = {

@@ -115,8 +115,7 @@ def get_entry(profile_entry_id: str, profile_email: str) -> dict[str, Any] | Non
 def list_domains(profile_email: str) -> list[str]:
     """Distinct domains this profile has ever had a Profile entry drafted
 
-    for — used by `brain1.key_areas_overview` to fold in any custom domain
-    alongside the canonical starter set (ADD §6.1: "extensible per user").
+    for (Brain 1's profile reads each area's accepted entry).
     """
     with get_connection() as conn:
         rows = conn.execute(

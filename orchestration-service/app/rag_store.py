@@ -15,8 +15,6 @@ from .paths import RAG_STORAGE_DIR
 # profile via metadata rather than one collection per user, so each stays a
 # single, simple local index.
 _client = chromadb.PersistentClient(path=str(RAG_STORAGE_DIR))
-_collection = _client.get_or_create_collection('moments')
-
 # Sensory Cortex's understanding, one document per conversation turn — unlike
 # the `profiles` SQL row (which only ever holds the latest snapshot), this
 # builds a searchable history of how someone has said they're feeling over
@@ -41,48 +39,11 @@ _document_chunk_collection = _client.get_or_create_collection(
 )
 
 
-def index_moment(moment_id: str, content: str, profile_email: str) -> None:
-    """Embeds a moment's content and upserts it into the local vector store.
-
-    Best-effort: a missing/unreachable Agentic Service must never block
-    saving a moment (the SQL write already happened), so failures here are
-    swallowed rather than raised.
-    """
-    try:
-        agentic = AgenticServiceClient()
-        vector = agentic.embed(content)['vector']
-        _collection.upsert(
-            ids=[moment_id],
-            embeddings=[vector],
-            documents=[content],
-            metadatas=[{'profile_email': profile_email}],
-        )
-    except (AgenticServiceError, KeyError):
-        pass
-
-
-def query_similar_moments(query_text: str, profile_email: str, n_results: int = 5) -> list[str]:
-    """Returns this profile's own moment IDs whose content is semantically closest to query_text."""
-    try:
-        agentic = AgenticServiceClient()
-        vector = agentic.embed(query_text)['vector']
-    except (AgenticServiceError, KeyError):
-        return []
-
-    result = _collection.query(
-        query_embeddings=[vector],
-        n_results=n_results,
-        where={'profile_email': profile_email},
-    )
-    ids = result.get('ids') or [[]]
-    return ids[0]
-
-
 def index_understanding(profile_email: str, response_text: str, mood_summary: str, context_notes: str) -> None:
     """Embeds one conversation check-in (what they said + what was understood from it)
 
     and appends it to this profile's understanding history. Best-effort, same as
-    index_moment — never blocks the conversation flow if the Agentic Service is down.
+    never blocks the conversation flow if the Agentic Service is down.
     """
     document = f'{response_text}\n\nUnderstood: {mood_summary}. {context_notes}'.strip()
     try:
@@ -137,7 +98,7 @@ def query_similar_understanding(query_text: str, profile_email: str, n_results: 
 def index_memory(memory_id: str, content: str, profile_email: str, memory_type: str) -> None:
     """Embeds an active memory and upserts it — call this only when a memory's
 
-    status is ACTIVE. Best-effort, same as index_moment: a missing/unreachable
+    status is ACTIVE. Best-effort: a missing/unreachable
     Agentic Service must never block a memory write.
     """
     try:

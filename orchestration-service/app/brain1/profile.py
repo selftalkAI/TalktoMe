@@ -9,6 +9,7 @@ from typing import Any
 from .. import memory_repo, profiles_repo
 from ..brain2 import intentions_repo, profile_store
 from ..db import get_connection
+from . import patterns
 
 # The Brain 1 Profile (Building_Brain1.md §8) — Brain 1's model of the whole
 # person, in 12 sections, built from what they have actually told us. Every
@@ -96,11 +97,25 @@ def build(profile_email: str) -> dict[str, Any]:
          'tier': 'T2', 'owner': q['core'], 'priority': q['priority'], 'question_id': q['question_id']}
         for q in open_questions(profile_email)
     ]
-    return {'sections': sections, 'strength': strength(sections), 'built_at': _now()}
+    measured = {'prediction_accuracy': patterns.accuracy(profile_email), 'correction_rate': correction_rate(profile_email)}
+    return {'sections': sections, 'strength': {**strength(sections), **measured}, 'built_at': _now()}
+
+
+def correction_rate(profile_email: str) -> float | None:
+    """Share of what Brain 1 recorded about them that they had to correct —
+    should fall over time (Building_Brain1.md §8.5)."""
+    rows = memory_repo.list_memories(profile_email, status=None)
+    recorded = [m for m in rows if m.get('rationale_code') != 'USER_CORRECTION' and not (m.get('domain') or '').startswith('brain1_')]
+    if not recorded:
+        return None
+    corrected = sum(1 for m in rows if m.get('rationale_code') == 'USER_CORRECTION')
+    return round(corrected / len(recorded), 2)
 
 
 def route(memory: dict[str, Any]) -> tuple[str, str]:
     """(section, owner) for one memory — by life area, then by type."""
+    if memory.get('source_type') == 'pattern':
+        return 'goals', 'behaviour.barriers'  # a pattern Brain 1 noticed across conversations
     area = (memory.get('domain') or '').lower()
     for keywords, section, owner in _AREA_ROUTES:
         if any(k in area for k in keywords):
@@ -170,6 +185,16 @@ def open_questions(profile_email: str) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def set_question_status(profile_email: str, question_id: str, status: str) -> bool:
+    """She can skip a question she doesn't want asked ('dropped')."""
+    if status not in ('dropped', 'answered'):
+        raise ValueError("status must be 'dropped' or 'answered'")
+    with get_connection() as conn:
+        cur = conn.execute('UPDATE brain1_open_questions SET status = ? WHERE question_id = ? AND profile_email = ?',
+                           (status, question_id, profile_email))
+    return cur.rowcount > 0
+
+
 def _seed_open_questions(profile_email: str, sections: dict[str, list[dict[str, Any]]]) -> None:
     """Starter questions for sections still empty; drops ones now answered."""
     with get_connection() as conn:
@@ -195,6 +220,7 @@ def _field(value: str, memory: dict[str, Any], owner: str) -> dict[str, Any]:
     confirmed = memory['status'] == memory_repo.ACTIVE and memory.get('explicitness') == 'explicit'
     return {
         'value': value,
+        'memory_id': memory['memory_id'],  # what the mirror view's confirm / fix / forget act on
         'source': 'said' if memory.get('explicitness') == 'explicit' else 'inferred',
         'evidence': [memory['memory_id']],
         'confidence': float(memory.get('confidence') or 0),

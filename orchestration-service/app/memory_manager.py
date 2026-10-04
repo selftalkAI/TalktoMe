@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from . import memory_repo, rag_store
+from .brain1 import consent as brain1_consent
 from .spinal_cord import AgenticServiceClient, AgenticServiceError
 
 # Deterministic write-gate thresholds (TDD §5 step 5 / ADD §13's write gate).
@@ -99,7 +100,11 @@ def _apply_write_gate(
         sensitivity_tier = 'T2'
 
     if sensitivity_tier == 'T3':
-        status = memory_repo.REQUIRES_CONFIRMATION  # FR-MEM-011: never auto-store T3
+        # FR-MEM-011: T3 is never used without her per-category opt-in. With it, her own
+        # explicit statements are kept like any other; without it they wait, unused.
+        consented = brain1_consent.granted(profile_email, brain1_consent.category_of({'domain': domain, 'content': content}))
+        explicit_enough = explicitness == 'explicit' and confidence >= MIN_CONFIDENCE_TO_AUTO_ACTIVATE
+        status = memory_repo.ACTIVE if consented and explicit_enough else memory_repo.REQUIRES_CONFIRMATION
     elif explicitness == 'explicit' and confidence >= MIN_CONFIDENCE_TO_AUTO_ACTIVATE:
         status = memory_repo.ACTIVE
     else:
@@ -122,7 +127,7 @@ def _apply_write_gate(
         source_id=source_id,
         domain=domain,
     )
-    if status == memory_repo.ACTIVE:
+    if status == memory_repo.ACTIVE and sensitivity_tier != 'T3':  # T3 never goes into embeddings (ADD §7.1)
         rag_store.index_memory(memory['memory_id'], memory['content'], profile_email, memory_type)
     return memory
 

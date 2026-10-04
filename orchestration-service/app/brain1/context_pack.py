@@ -5,7 +5,7 @@ from typing import Any
 
 from .. import profiles_repo
 from ..brain2 import profile_store
-from . import here_now, profile
+from . import consent, here_now, patterns, profile
 
 # Brain 1's Context Pack (Building_Brain1.md §8.6) — what Brain 2 is told
 # about the person before every reply. Brain 2 never sees the raw profile:
@@ -42,7 +42,8 @@ def compile(  # noqa: A001 - the pack is "compiled", per the spec's vocabulary
     person = profiles_repo.get_profile(profile_email) or {}
     first_name = ((person.get('full_name') or '').split() or ['there'])[0]
     built = profile.build(profile_email)
-    sections = {key: [f for f in fields if _shareable(f)] for key, fields in built['sections'].items()}
+    allowed = consent.allowed_categories(profile_email)
+    sections = {key: [f for f in fields if _shareable(f, allowed)] for key, fields in built['sections'].items()}
     now = here_now.compute(person.get('location'), now_utc)
 
     pack = {
@@ -54,15 +55,28 @@ def compile(  # noqa: A001 - the pack is "compiled", per the spec's vocabulary
         'story': _story(profile_email, domain, sections['story'], support_message),
         'works': _lines(sections['what_works'], MAX_LIFE_FACTS),
         'hooks': _hooks(now, [f for s in _HOOK_SECTIONS for f in sections[s]]),
-        'unknowns': _lines(sections['open_questions'], MAX_UNKNOWNS, prefix='Ask only if it fits naturally: '),
+        'unknowns': '\n'.join(filter(None, [
+            _lines(sections['open_questions'], MAX_UNKNOWNS, prefix='Ask only if it fits naturally: '),
+            _pattern_to_check(profile_email),
+        ])),
     }
     pack['allowed_text'] = '\n'.join(v for k, v in pack.items() if k != 'first_name')
     pack['blocked_terms'] = []
     return pack
 
 
-def _shareable(field: dict[str, Any]) -> bool:
-    return field.get('tier') != 'T3' and not str(field.get('area') or '').startswith('brain1_')
+def _pattern_to_check(profile_email: str) -> str:
+    """One pattern Brain 1 noticed but she hasn't confirmed — offered as a
+    gentle question, never stated as fact (Building_Brain1.md Scenario 8)."""
+    waiting = patterns.pending(profile_email)
+    if not waiting:
+        return ''
+    return f"- Something you may have noticed across your talks (check gently whether it rings true, only if it fits): {waiting[0]['content']}"
+
+
+def _shareable(field: dict[str, Any], allowed: set[str]) -> bool:
+    """T3 only with her consent for that category; system-owned fields never."""
+    return consent.shareable(field, allowed) and not str(field.get('area') or '').startswith('brain1_')
 
 
 def _lines(fields: list[dict[str, Any]], limit: int, prefix: str = '') -> str:
@@ -73,11 +87,26 @@ def _lines(fields: list[dict[str, Any]], limit: int, prefix: str = '') -> str:
     return '\n'.join(f'- {prefix}{v}' for v in seen[:limit])
 
 
+# Areas whose facts matter to each other (health matters to fitness; a gym routine doesn't matter to a job decision).
+_RELATED_AREAS = (
+    {'fitness', 'gym', 'exercise', 'health', 'sleep', 'nutrition', 'body', 'energy', 'running'},
+    {'cooking', 'food', 'nutrition', 'recipes'},
+    {'work', 'career', 'job'},
+    {'money', 'finance', 'finances', 'budget', 'spending'},
+    {'family', 'kids', 'children', 'parenting', 'partner', 'relationships'},
+    {'feelings', 'emotion', 'emotions', 'stress', 'mood', 'mental'},
+)
+
+
 def _relevant_to(domain: str, fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Facts from this area first, then general ones — never facts that belong
-    to a different area (a gym routine has no place in a job decision)."""
+    """Facts from this area, then related areas, then general ones — never
+    facts from an unrelated area."""
+    area = (domain or '').lower()
+    related = set().union(*(group for group in _RELATED_AREAS if area in group)) - {area}
     general = (None, '', 'general')
-    return [f for f in fields if f.get('area') == domain] + [f for f in fields if f.get('area') in general]
+    return ([f for f in fields if (f.get('area') or '').lower() == area]
+            + [f for f in fields if (f.get('area') or '').lower() in related]
+            + [f for f in fields if f.get('area') in general])
 
 
 def _communication(sections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
