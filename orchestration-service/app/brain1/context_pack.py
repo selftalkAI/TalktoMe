@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
-from .. import memory_repo, profiles_repo
+from .. import profiles_repo
+from ..brain2 import profile_store
+from . import here_now, profile
 
 # Brain 1's Context Pack (Building_Brain1.md §8.6) — what Brain 2 is told
-# about the person before every reply. This is the STUB compiler (Brain 2
-# Phase A): it builds the pack from what exists today — the `profiles` row,
-# active memories, and the goal's check-ins. The full compiler (12-section
-# profile, Here & Now, episodic memory, hooks, learned strategies) replaces
-# it in the Brain 1 Profile stage; the pack's shape stays the same so Brain 2
-# never has to change.
+# about the person before every reply. Brain 2 never sees the raw profile:
+# this compiles only what matters for this moment, in plain language, with a
+# fixed set of sections Brain 2's prompts expect.
 #
-# Privacy: T3 memories (health, finances) are never included — there is no
-# per-category opt-in yet (FSD BR-018), so the safe default is exclusion.
+# Privacy filter: T3 fields (health, finances) never enter the pack — there is
+# no per-category opt-in yet (FSD BR-018) — nor do system-owned fields.
 
+MAX_WHO = 8
 MAX_LIFE_FACTS = 10
+MAX_STORY = 3
+MAX_UNKNOWNS = 2
 MAX_CHECKINS = 7
 
+_LIFE_SECTIONS = ('tastes', 'life_map', 'inner_world', 'body')
+_HOOK_SECTIONS = ('tastes',)  # what they love and their rituals — not their struggles
 
-def compile_stub(
+
+def compile(  # noqa: A001 - the pack is "compiled", per the spec's vocabulary
     profile_email: str,
     domain: str,
     *,
@@ -28,45 +33,53 @@ def compile_stub(
     checkins: list[dict[str, Any]] | None = None,
     streak: int | None = None,
     support_message: str = '',
-    now: datetime | None = None,
+    now_utc: datetime | None = None,
 ) -> dict[str, Any]:
-    """Returns the pack: plain-language sections keyed as Brain 2's Speak
-    prompt expects (`first_name`, `who`, `goal`, `today`, `loves`, `story`,
-    `works`), plus `allowed_text` (everything a reply may draw numbers from)
-    and `blocked_terms` (privacy items a reply must never mention).
-    """
-    profile = profiles_repo.get_profile(profile_email) or {}
-    first_name = ((profile.get('full_name') or '').split() or ['there'])[0]
+    """Returns the pack: `first_name` plus the sections Brain 2's prompts use
+    (`who`, `goal`, `today`, `loves`, `story`, `works`, `hooks`, `unknowns`),
+    `allowed_text` (everything a reply may draw numbers and days from) and
+    `blocked_terms` (privacy items a reply must never mention)."""
+    person = profiles_repo.get_profile(profile_email) or {}
+    first_name = ((person.get('full_name') or '').split() or ['there'])[0]
+    built = profile.build(profile_email)
+    sections = {key: [f for f in fields if _shareable(f)] for key, fields in built['sections'].items()}
+    now = here_now.compute(person.get('location'), now_utc)
 
     pack = {
         'first_name': first_name,
-        'who': _who(profile),
+        'who': _lines(sections['identity'] + sections['people'] + _communication(sections), MAX_WHO),
         'goal': _goal(intention, checkins or [], streak),
-        'today': _today(now or datetime.now()),
-        'loves': _life_facts(profile, profile_email, domain),
-        'story': f'Earlier you offered this support: "{support_message.strip()}" — build on it, don\'t repeat it.'
-        if support_message.strip()
-        else '',
-        'works': '',
+        'today': here_now.describe(now),
+        'loves': _lines(_relevant_first([f for s in _LIFE_SECTIONS for f in sections[s]], domain), MAX_LIFE_FACTS),
+        'story': _story(profile_email, domain, sections['story'], support_message),
+        'works': _lines(sections['what_works'], MAX_LIFE_FACTS),
+        'hooks': _hooks(now, [f for s in _HOOK_SECTIONS for f in sections[s]]),
+        'unknowns': _lines(sections['open_questions'], MAX_UNKNOWNS, prefix='Ask only if it fits naturally: '),
     }
     pack['allowed_text'] = '\n'.join(v for k, v in pack.items() if k != 'first_name')
     pack['blocked_terms'] = []
     return pack
 
 
-def _who(profile: dict[str, Any]) -> str:
-    if not profile:
-        return ''
-    parts = [profile.get('full_name') or '']
-    age = _age(profile.get('dob'))
-    if age is not None:
-        parts.append(f'{age} years old')
-    if profile.get('location'):
-        parts.append(f"lives in {profile['location']}")
-    lines = [', '.join(p for p in parts if p) + '.']
-    if profile.get('quote'):
-        lines.append(f'A line they chose for themselves: "{profile["quote"]}"')
-    return '\n'.join(lines)
+def _shareable(field: dict[str, Any]) -> bool:
+    return field.get('tier') != 'T3' and not str(field.get('area') or '').startswith('brain1_')
+
+
+def _lines(fields: list[dict[str, Any]], limit: int, prefix: str = '') -> str:
+    seen: list[str] = []
+    for f in fields:
+        if f['value'] not in seen:
+            seen.append(f['value'])
+    return '\n'.join(f'- {prefix}{v}' for v in seen[:limit])
+
+
+def _relevant_first(fields: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
+    return sorted(fields, key=lambda f: (f.get('area') or '') != domain)
+
+
+def _communication(sections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    # The voice preference itself is Brain 1's business (Persona Selector), not a fact to mention.
+    return [f for f in sections['communication'] if not f['value'].startswith('Prefers Brain 2 to talk like')]
 
 
 def _goal(intention: dict[str, Any] | None, checkins: list[dict[str, Any]], streak: int | None) -> str:
@@ -84,34 +97,26 @@ def _goal(intention: dict[str, Any] | None, checkins: list[dict[str, Any]], stre
     return '\n'.join(lines)
 
 
-def _today(now: datetime) -> str:
-    return now.strftime('%A, %d %B %Y, %I:%M %p').replace(' 0', ' ')
+def _story(profile_email: str, domain: str, story_fields: list[dict[str, Any]], support_message: str) -> str:
+    lines: list[str] = []
+    if support_message.strip():
+        lines.append(f'Earlier you offered this support: "{support_message.strip()}" — build on it, don\'t repeat it.')
+    accepted = profile_store.get_accepted(profile_email, domain)
+    if accepted:
+        lines.append(f"What they agreed is true about their {domain}: {accepted['content']}")
+    events = [f['value'] for f in story_fields if f.get('source') != 'accepted'][:MAX_STORY]
+    lines += [f'- {e}' for e in events]
+    return '\n'.join(lines)
 
 
-def _life_facts(profile: dict[str, Any], profile_email: str, domain: str) -> str:
-    """What they have told us, this domain first — never T3."""
-    memories = [
-        m
-        for m in memory_repo.list_memories(profile_email)
-        if m.get('sensitivity_tier') != 'T3' and not (m.get('domain') or '').startswith('brain1_')  # system-owned, not life facts
-    ]
-    memories.sort(key=lambda m: m.get('domain') != domain)
-    facts = [f"- {m['content']}" for m in memories[:MAX_LIFE_FACTS]]
-
-    interests = ', '.join(i.replace('_', ' ') for i in profile.get('interests') or [])
-    if interests:
-        facts.append(f'- Interests they picked: {interests}')
-    if profile.get('other_interests'):
-        facts.append(f"- Also into: {profile['other_interests']}")
-    return '\n'.join(facts)
-
-
-def _age(dob: str | None) -> int | None:
-    if not dob:
-        return None
-    try:
-        birth = date.fromisoformat(dob[:10])
-    except ValueError:
-        return None
-    today = date.today()
-    return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+def _hooks(now: dict[str, Any], life_fields: list[dict[str, Any]]) -> str:
+    """Where the moment meets their life (Building_Brain1.md §8.6): the
+    moment plus the things from their life that could connect to it. Brain 2
+    decides whether one fits; nothing here is invented."""
+    if not life_fields:
+        return ''
+    moment = f"{now['weekday']} {now['part_of_day']}"
+    if now.get('weather'):
+        moment += f", {now['weather']['words']}, {now['weather']['temperature_c']}°C"
+    things = '; '.join(f['value'].rstrip('.') for f in life_fields[:4])
+    return f'The moment: {moment}.\nFrom their life, things that might connect to it: {things}.'

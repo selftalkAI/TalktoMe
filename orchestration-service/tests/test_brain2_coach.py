@@ -67,8 +67,9 @@ class FakeAgentic:
 
 @pytest.fixture(autouse=True)
 def stub_pack(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(coach.context_pack, 'compile_stub', lambda *a, **k: dict(PACK))
+    monkeypatch.setattr(coach.context_pack, 'compile', lambda *a, **k: dict(PACK))
     monkeypatch.setattr(coach.settings, 'brain2_speak_candidates', 2)
+    monkeypatch.setattr(coach.runs, 'record', lambda *a, **k: 'run-1')
     monkeypatch.setattr(
         coach.persona_selector, 'select', lambda *a, **k: {'voice': 'friend', 'expertise': 'general', 'source': 'selected'}
     )
@@ -195,3 +196,31 @@ def test_a_voice_request_is_acknowledged_in_the_plan(monkeypatch: pytest.MonkeyP
     fake = _install(monkeypatch, FakeAgentic(["Deal — just me now. So what's going on?", 'Okay, sister mode. Talk to me.']))
     coach.reply('sam@example.com', 'general', 'Can you talk to me like my sister would?')
     assert 'asked you to change how you talk' in fake.payloads('broca')[0]['plan']
+
+
+def test_crisis_gets_the_care_message_and_no_model_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeAgentic([]))
+    monkeypatch.setattr(coach.profiles_repo, 'get_profile', lambda e: {'full_name': 'Sam Lee', 'location': 'Langley, BC, Canada'})
+    result = coach.reply('sam@example.com', 'fitness', "I don't want to be alive anymore.")
+    assert result['safety'] == 'crisis' and fake.calls == []
+    assert '9-8-8' in result['content'] and 'Are you safe right now?' in result['content']
+
+
+def test_concern_overrides_persona_and_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeAgentic(["That sounds so heavy. How are you holding up tonight?", 'I hear you.']))
+    result = coach.reply('sam@example.com', 'fitness', "Honestly I can't do this anymore. What's the point.")
+    assert result['safety'] == 'concern'
+    assert result['persona']['voice'] == 'mother_like' and fake.payloads('prefrontal_cortex') == []
+    assert 'No goals, no advice' in fake.payloads('broca')[0]['plan']
+    pack = fake.payloads('broca')[0]['context_pack']
+    assert pack['goal'] == pack['loves'] == '' and pack['who']  # goals and struggles withheld; who they are kept
+
+
+def test_every_turn_is_traced(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: list[tuple] = []
+    monkeypatch.setattr(coach.runs, 'record', lambda *a, **k: recorded.append(a) or 'run-9')
+    _install(monkeypatch, FakeAgentic(['Rest night, or two easy minutes?', 'How are the kids?']))
+    result = coach.reply('sam@example.com', 'fitness', 'Kids were sick.')
+    assert result['run_id'] == 'run-9'
+    trace = recorded[0][3]
+    assert 'Kids were sick.' not in str(trace) and result['content'] not in str(trace)  # no message or reply text

@@ -12,7 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import brain1, memory_manager, memory_repo, moments_repo, profiles_repo, rag_manager, rag_store
+from .brain1 import here_now as brain1_here_now
 from .brain1 import persona_selector
+from .brain1 import profile as brain1_profile
+from .brain1 import runs as brain1_runs
+from .brain1 import safety as brain1_safety
 from .brain2 import intentions_repo as brain2_intentions_repo
 from .brain2 import orchestrator as brain2
 from .brain2 import profile_store as brain2_profile_store
@@ -351,11 +355,39 @@ def brain_turn(email: str, payload: ConversationTurnIn) -> dict[str, Any]:
     proposal awaiting her acceptance (ADR-022)."""
     if profiles_repo.get_profile(email) is None:
         raise HTTPException(status_code=404, detail=f'No profile for {email}')
-    memory_manager.remember_from_text(
-        profile_email=email, source_text=payload.message, source_type='conversation', source_id=f'turn-{payload.domain}'
-    )
+    if brain1_safety.assess(payload.message)['level'] != brain1_safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
+        memory_manager.remember_from_text(
+            profile_email=email, source_text=payload.message, source_type='conversation', source_id=f'turn-{payload.domain}'
+        )
     intention = brain2_intentions_repo.get_active_intention(email, payload.domain)
     return brain2.converse(email, payload.domain, payload.message, conversation=payload.conversation, intention=intention)
+
+
+@app.get('/api/v1/brain1/{email}/profile')
+def brain1_get_profile(email: str) -> dict[str, Any]:
+    """The mirror view (Building_Brain1.md §8): everything Brain 1 believes
+    about them, section by section, with the evidence for each field, plus
+    the live Here & Now and how well Brain 1 knows them."""
+    person = profiles_repo.get_profile(email)
+    if person is None:
+        raise HTTPException(status_code=404, detail=f'No profile for {email}')
+    built = brain1_profile.build(email)
+    saved = brain1_profile.save_version(email, built, reason='viewed')
+    latest = brain1_profile.latest_version(email)
+    return {
+        **built,
+        'here_now': brain1_here_now.compute(person.get('location')),
+        'version': (saved or latest or {}).get('version'),
+    }
+
+
+@app.get('/api/v1/brain1/{email}/runs/{run_id}')
+def brain1_get_run(email: str, run_id: str) -> dict[str, Any]:
+    """Why Brain 2 said what it said, for one turn — never the message text."""
+    run = brain1_runs.get(run_id, email)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f'Unknown run {run_id}')
+    return run
 
 
 def _profile_facts(row: dict[str, Any]) -> dict[str, Any]:

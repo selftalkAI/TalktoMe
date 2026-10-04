@@ -76,6 +76,13 @@ cd orchestration-service && python3 scripts/ingest_pdfs.py "../Docs/ASSETS/BOOKS
 
 **Model quality:** Brain 2's voice depends heavily on the model. The MVP runs on local `llama3.1`; to use a stronger model, set `MODEL_PROVIDER=bedrock` in `agentic-service/.env`, configure AWS credentials (`aws configure`), and enable the model in the Bedrock console. Nothing else changes.
 
+## Trying Brain 1 + Brain 2
+
+- `python3 orchestration-service/scripts/serve_interactive_brain2_ui.py` — the interactive conversation UI (port 8767).
+- `python3 orchestration-service/scripts/brain2_live_scenarios.py` — Brain 2's behaviour scenarios on the real model.
+- `GET /api/v1/brain1/{email}/profile` — what Brain 1 believes about a person, with evidence.
+- Weather for Brain 1's Here & Now comes from Open-Meteo (only the city name is sent); set `HERE_NOW_WEATHER_ENABLED=false` in `orchestration-service/.env` to keep everything local.
+
 ## Build status
 
 The Brain 1 / Brain 2 redesign is being built in phases — see `Building_Brain1.md` §18 and `Building_Brain2.md` §15. `TDD §34` tracks what is implemented versus planned.

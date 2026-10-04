@@ -63,6 +63,8 @@ _PACK_SECTIONS = (
     ('loves', 'WHAT YOU KNOW ABOUT THEIR LIFE'),
     ('story', 'STORY SO FAR'),
     ('works', 'WHAT WORKS FOR THEM / WHAT TO AVOID'),
+    ('hooks', 'WAYS TO TIE THIS TO THEIR LIFE TODAY (use at most one, only if it truly fits)'),
+    ('unknowns', "THINGS YOU DON'T KNOW YET"),
 )
 
 

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .. import memory_repo, profiles_repo
+from ..brain1 import profile as brain1_profile
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import coach, intentions_repo, profile_store
 from .checks import check_reply
@@ -154,10 +155,13 @@ def converse(
         escalation_level=escalation_level,
     )
     proposal = None
-    if trigger == 'message' and _learned_something_lasting(profile_email, domain, result['reading'], intention):
+    if trigger == 'message' and result['safety'] == 'ok' and _learned_something_lasting(profile_email, domain, result['reading'], intention):
         proposal = propose_refinement(profile_email, domain, message, intention=intention, streak=streak)
+    brain1_profile.save_version(profile_email, brain1_profile.build(profile_email), reason=f'turn:{domain}')
     return {
         'reply': result['content'],
+        'safety': result['safety'],
+        'run_id': result.get('run_id'),
         'persona': result['persona'],
         'reading': result['reading'],
         'plan': result['plan'],

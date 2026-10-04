@@ -125,3 +125,13 @@ def _proactive_plan(escalation_level: int) -> dict[str, Any]:
     if escalation_level > 0:
         words += '\nYour earlier check-ins got no answer, so keep this one even lighter and try a different angle.'
     return {'stance': 'listen', 'moves': ['care', 'open_question'], 'question': None, 'idea': None, 'words': words}
+
+
+def concern_plan() -> dict[str, Any]:
+    """Safety `concern` (Building_Brain1.md §13): listen and be there — no
+    goals, no advice, no challenge, no ideas."""
+    words = (
+        'Stance: listen.\nThey sound like they are really struggling. Just be there: say back gently what you hear, '
+        'and ask one soft question about how they are. No goals, no advice, no ideas, no silver linings.'
+    )
+    return {'stance': 'listen', 'moves': ['reflect', 'care'], 'question': None, 'idea': None, 'words': words}

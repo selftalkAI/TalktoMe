@@ -52,8 +52,10 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         orchestrator.coach,
         'reply',
         lambda *a, **k: {'content': 'Rest night, or two easy minutes?', 'persona': {'voice': 'friend'}, 'reading': wired_reading['value'],
-                         'plan': {}, 'verdict': None, 'fallback': False},
+                         'plan': {}, 'verdict': None, 'fallback': False, 'safety': wired_reading.get('safety', 'ok'), 'run_id': 'r1'},
     )
+    monkeypatch.setattr(orchestrator.brain1_profile, 'build', lambda email: {'sections': {}})
+    monkeypatch.setattr(orchestrator.brain1_profile, 'save_version', lambda *a, **k: None)
     drafts: list[str] = []
     monkeypatch.setattr(orchestrator, '_run_broca', lambda email, payload: drafts.pop(0) if drafts else '')
     return {'store': store, 'memories': memories, 'drafts': drafts}
@@ -65,6 +67,7 @@ wired_reading: dict[str, Any] = {'value': {}}
 @pytest.fixture(autouse=True)
 def _reset_reading() -> None:
     wired_reading['value'] = {}
+    wired_reading.pop('safety', None)
 
 
 def test_an_ordinary_turn_is_chat_only(wired: dict[str, Any]) -> None:
@@ -118,3 +121,10 @@ def test_t3_memories_never_reach_a_narrative(wired: dict[str, Any], monkeypatch:
     wired['memories'].rows = [_mem('Walks daily'), _mem('Has a heart condition', tier='T3')]
     orchestrator.propose_refinement('sam@x', 'fitness', '')
     assert sent[0]['domain_memories'] == ['Walks daily']
+
+
+def test_no_proposal_when_safety_is_not_ok(wired: dict[str, Any]) -> None:
+    wired_reading['value'] = {'did_it_today': True, 'minutes_today': 60}
+    wired_reading['safety'] = 'concern'
+    turn = orchestrator.converse('sam@x', 'fitness', 'whatever', intention={'intention_id': 'i1', 'title': 'Gym', 'target_minutes': 60})
+    assert turn['proposal'] is None and turn['safety'] == 'concern'

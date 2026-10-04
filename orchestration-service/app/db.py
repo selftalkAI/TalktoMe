@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS memories (
     profile_email TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN (
         'fact', 'preference', 'goal', 'relationship', 'event',
-        'routine', 'constraint', 'project_context', 'user_instruction'
+        'routine', 'constraint', 'project_context', 'user_instruction', 'learned_strategy'
     )),
     domain TEXT,
     content TEXT NOT NULL,
@@ -154,6 +154,58 @@ CREATE TABLE IF NOT EXISTS brain2_checkins (
     created_at TEXT NOT NULL,
     PRIMARY KEY (intention_id, checkin_date)
 );
+
+-- Brain 1 (Building_Brain1.md §11, TDD §21 V03).
+-- One row per version of the compiled 12-section profile — the history of
+-- how Brain 1 came to know this person.
+CREATE TABLE IF NOT EXISTS brain1_profile_versions (
+    version_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    profile_json TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (profile_email, version)
+);
+-- How the person responded to each reply — the raw signal Brain 1 learns from.
+CREATE TABLE IF NOT EXISTS brain1_outcomes (
+    outcome_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    run_id TEXT,
+    card_ids TEXT NOT NULL DEFAULT '[]',
+    voice TEXT,
+    expertise TEXT,
+    stance TEXT,
+    outcome TEXT NOT NULL CHECK (outcome IN
+        ('change_talk', 'took_action', 'accepted', 'sustain', 'discord', 'silence')),
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brain1_outcomes_profile ON brain1_outcomes(profile_email, created_at);
+-- What Brain 1 still wants to learn, for Brain 2 to ask at the right moment.
+CREATE TABLE IF NOT EXISTS brain1_open_questions (
+    question_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    core TEXT NOT NULL,
+    sub_agent TEXT,
+    question TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 50,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'asked', 'answered', 'dropped')),
+    created_at TEXT NOT NULL,
+    UNIQUE (profile_email, core, question)
+);
+-- Trace of one turn: safety, cores, Context Pack sections, persona, plan,
+-- checks — so anyone can see why Brain 2 said what it said.
+CREATE TABLE IF NOT EXISTS brain1_runs (
+    run_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    trigger TEXT NOT NULL CHECK (trigger IN ('message', 'silence', 'schedule', 'event')),
+    safety_level TEXT NOT NULL CHECK (safety_level IN ('ok', 'concern', 'crisis')),
+    trace_json TEXT NOT NULL,
+    latency_ms INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brain1_runs_profile ON brain1_runs(profile_email, created_at);
 """
 
 
@@ -184,6 +236,29 @@ def init_db() -> None:
         conn.execute(
             'CREATE INDEX IF NOT EXISTS idx_memories_profile_domain_status ON memories(profile_email, domain, status)'
         )
+        _migrate_memory_types(conn)
+
+
+def _migrate_memory_types(conn: sqlite3.Connection) -> None:
+    """Adds 'learned_strategy' to memories.type (V03). SQLite can't alter a
+    CHECK constraint, so the table is rebuilt in one transaction with every
+    row and index carried over; it is a no-op once done."""
+    table_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'").fetchone()['sql']
+    if 'learned_strategy' in table_sql:
+        return
+    columns = [row['name'] for row in conn.execute('PRAGMA table_info(memories)').fetchall()]
+    column_list = ', '.join(columns)
+    new_sql = table_sql.replace("'user_instruction'", "'user_instruction', 'learned_strategy'", 1).replace(
+        'CREATE TABLE memories', 'CREATE TABLE memories_v03', 1
+    )
+    conn.execute('BEGIN')
+    conn.execute(new_sql)
+    conn.execute(f'INSERT INTO memories_v03 ({column_list}) SELECT {column_list} FROM memories')
+    conn.execute('DROP TABLE memories')
+    conn.execute('ALTER TABLE memories_v03 RENAME TO memories')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_memories_profile_status ON memories(profile_email, status)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_memories_profile_domain_status ON memories(profile_email, domain, status)')
+    conn.execute('COMMIT')
 
 
 @contextmanager

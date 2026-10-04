@@ -41,6 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import brain1, memory_manager, memory_repo  # noqa: E402
+from app.brain1 import safety  # noqa: E402
 from app.brain2 import intentions_repo, orchestrator  # noqa: E402
 from app.spinal_cord import AgenticServiceClient, AgenticServiceError  # noqa: E402
 
@@ -186,13 +187,14 @@ def _process_turn(text: str, domain: str) -> None:
     # reads them back as `domain_memories`. Without this call that grounding
     # was always empty, no matter what the person revealed. Best-effort —
     # `remember_from_text` never raises, so this can't block the turn.
-    memory_manager.remember_from_text(
-        profile_email=PROFILE_EMAIL,
-        source_text=text,
-        source_type='conversation',
-        source_id=f'{domain}-{len(THREAD)}',
-        full_name=PROFILE_FACTS['full_name'],
-    )
+    if safety.assess(text)['level'] != safety.CRISIS:  # crisis turns are never remembered (FR-SAFE-008)
+        memory_manager.remember_from_text(
+            profile_email=PROFILE_EMAIL,
+            source_text=text,
+            source_type='conversation',
+            source_id=f'{domain}-{len(THREAD)}',
+            full_name=PROFILE_FACTS['full_name'],
+        )
 
     minutes = None
     streak = None

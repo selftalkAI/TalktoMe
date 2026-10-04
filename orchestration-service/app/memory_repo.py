@@ -19,7 +19,7 @@ DELETED = 'deleted'
 
 VALID_TYPES = {
     'fact', 'preference', 'goal', 'relationship', 'event',
-    'routine', 'constraint', 'project_context', 'user_instruction',
+    'routine', 'constraint', 'project_context', 'user_instruction', 'learned_strategy',
 }
 VALID_SENSITIVITY_TIERS = {'T0', 'T1', 'T2', 'T3'}
 

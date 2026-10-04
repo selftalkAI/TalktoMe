@@ -34,6 +34,10 @@ class Settings:
         # Brain 2 Speak candidates per reply (Building_Brain2.md §9.4.4). More = better odds of a
         # good reply, but each one is a model call — 2 is the default trade-off.
         self.brain2_speak_candidates: int = max(1, int(os.getenv('BRAIN2_SPEAK_CANDIDATES', '2')))
+        # Brain 1 Here & Now (Building_Brain1.md §7.1 C13): weather for the person's onboarding city
+        # via Open-Meteo. Only the city name leaves the system; turn off to keep everything local.
+        self.here_now_weather_enabled: bool = os.getenv('HERE_NOW_WEATHER_ENABLED', 'true').lower() == 'true'
+        self.here_now_timeout_seconds: float = float(os.getenv('HERE_NOW_TIMEOUT_SECONDS', '3'))
 
 
 settings = Settings()
