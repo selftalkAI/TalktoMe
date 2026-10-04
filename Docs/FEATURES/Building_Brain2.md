@@ -799,8 +799,8 @@ tested in parallel.
 
 | Phase | Build | Done when |
 |---|---|---|
-| **A · Foundations** | Per-step model routing in config (Ollama `llama3.1` today; a stronger provider for Decide/Speak by config only). Conversation as real turns. Stub Context Pack. | A reply is generated from the full Speak template with real turns. |
-| **B · Check first** | `checks.py` + regression set of the real bad outputs (§2). | Every real bad output from §2 is **rejected** by the checks. |
+| **A · Foundations** ✅ 2026-10-03 | Per-step model routing in config (Ollama `llama3.1` today; a stronger provider for Decide/Speak by config only). Conversation as real turns. Stub Context Pack. | A reply is generated from the full Speak template with real turns. |
+| **B · Check first** ✅ 2026-10-03 | `checks.py` + regression set of the real bad outputs (§2). | Every real bad output from §2 is **rejected** by the checks. |
 | **C · Five steps** | Understand, Decide (+ `plan_rules.py`), Speak (2–3 candidates), Check + judge, fallback. | Scenarios 1, 4, 5, 6, 7 pass. |
 | **D · Voices** | `voice.md`, `style.md`; first voices (friend, coach, big sister, mother-like) + expertise packs (fitness coach, mind & emotions guide); example library per voice × stance. Stub Persona Selector until Brain 1's is built. | Rubric scores beat the old Broca on the same 30 transcripts; scenarios 12 and 14 pass. |
 | **E · Split chat / profile** | Remember step; profile proposals as separate cards in the UI. | No more "Profile draft v1" on every message. |

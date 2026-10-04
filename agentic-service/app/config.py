@@ -22,6 +22,10 @@ class Settings:
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3.1")
         self.ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+        # Per-step routing (ADD ADR-023): "large" serves Speak/Decide/core agents,
+        # "small" serves Understand/Check/sub-agents. Both default to OLLAMA_MODEL.
+        self.ollama_model_large: str = os.getenv("OLLAMA_MODEL_LARGE", self.ollama_model)
+        self.ollama_model_small: str = os.getenv("OLLAMA_MODEL_SMALL", self.ollama_model)
 
         # AWS Bedrock settings
         self.aws_region: str = os.getenv("AWS_REGION", "us-east-1")
@@ -31,6 +35,8 @@ class Settings:
         self.bedrock_embedding_model_id: str = os.getenv(
             "BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"
         )
+        self.bedrock_model_id_large: str = os.getenv("BEDROCK_MODEL_ID_LARGE", self.bedrock_model_id)
+        self.bedrock_model_id_small: str = os.getenv("BEDROCK_MODEL_ID_SMALL", self.bedrock_model_id)
 
 
 settings = Settings()

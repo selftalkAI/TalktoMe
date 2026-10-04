@@ -156,23 +156,21 @@ def _extract_minutes(text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _domain_history(domain: str) -> str:
-    """Turn-by-turn transcript of this domain's thread so far, oldest to
-
-    newest — what makes a reply like "how do I do that?" ground-able. Call
-    this BEFORE appending the current turn, so it never includes itself.
+def _domain_turns(domain: str) -> list[dict[str, str]]:
+    """This domain's thread so far as real chat turns, oldest to newest —
+    what makes a reply like "how do I do that?" ground-able, and what lets
+    Brain 2's Check catch it repeating itself. Call this BEFORE appending the
+    current turn, so it never includes itself.
     """
-    lines: list[str] = []
+    turns: list[dict[str, str]] = []
     for entry in THREAD:
         if entry.get('domain') != domain:
             continue
         if entry['kind'] in ('user', 'user_feedback'):
-            lines.append(f"User: {entry['text']}")
-        elif entry['kind'] == 'brain2':
-            lines.append(f"Brain 2: {entry['text']}")
-        elif entry['kind'] == 'brain2_support':
-            lines.append(f"Brain 2 (support): {entry['text']}")
-    return '\n'.join(lines)
+            turns.append({'role': 'user', 'content': entry['text']})
+        elif entry['kind'] in ('brain2', 'brain2_support'):
+            turns.append({'role': 'assistant', 'content': entry['text']})
+    return turns
 
 
 def _process_turn(text: str, domain: str) -> None:
@@ -189,7 +187,7 @@ def _process_turn(text: str, domain: str) -> None:
     """
     global INTENTION, GOAL_ACHIEVED, LAST_ACTIVITY
 
-    history = _domain_history(domain)  # captured before this turn's own entry is appended
+    history = _domain_turns(domain)  # captured before this turn's own entry is appended
 
     # A reply to an already-pending draft in this domain reads as feedback;
     # nothing pending in it yet reads as a fresh reflection — same
@@ -237,7 +235,8 @@ def _process_turn(text: str, domain: str) -> None:
             if result['needs_support']:
                 support = orchestrator.offer_support(PROFILE_EMAIL, INTENTION, streak, result['checkins'])
                 support_message = support['message']
-                _append('brain2_support', support_message, domain=domain)
+                if support_message:  # empty when it failed Brain 2's Check — never shown
+                    _append('brain2_support', support_message, domain=domain)
                 suggested = support.get('suggested_target_minutes')
                 new_target = suggested if isinstance(suggested, int) and suggested > 0 else max(10, round(INTENTION['target_minutes'] * 0.5))
                 INTENTION = orchestrator.adjust_intention(PROFILE_EMAIL, INTENTION['intention_id'], new_target)
@@ -251,7 +250,7 @@ def _process_turn(text: str, domain: str) -> None:
         intention=intention_for_broca,
         streak=streak,
         support_message=support_message,
-        conversation_history=history,
+        conversation=history,
         checkin_mode=checkin_mode,
         escalation_level=escalation_level,
     )
@@ -347,15 +346,16 @@ def _process_auto_nudge() -> bool:
     domain = candidates[start]
     _LAST_NUDGED_DOMAIN = domain
 
-    history = _domain_history(domain)
+    history = _domain_turns(domain)
     escalation_level = ESCALATION.get(domain, 0)
     _append('system', f"Brain 1 → Brain 2 ({domain}): no response from User 1 yet — asking for a stronger answer (attempt #{escalation_level + 1}).", domain=domain)
     proposal = orchestrator.propose_refinement(
         profile_email=PROFILE_EMAIL,
         domain=domain,
-        user_reflection=f'(No new input from the user yet in the {domain} domain. Brain 1 is checking in on their behalf.)',
+        user_reflection='',
+        trigger='silence',
         intention=INTENTION if domain == GOAL_DOMAIN else None,
-        conversation_history=history,
+        conversation=history,
         checkin_mode=True,
         escalation_level=escalation_level,
     )

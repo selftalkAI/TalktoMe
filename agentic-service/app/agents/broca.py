@@ -6,8 +6,12 @@ from typing import Any
 from ..model_gateway import get_model_provider
 from ..workflow.models import PlanStep
 from ..workflow.state import RiskClass
+from pathlib import Path
+
 from . import _shared
-from ._graph import run, single_node_graph
+from ._graph import router_graph, run
+
+_PROMPTS_DIR = Path(__file__).parent / 'prompts'
 
 
 def _profile_narrative(payload: dict[str, Any]) -> dict[str, Any]:
@@ -142,14 +146,107 @@ def _profile_narrative(payload: dict[str, Any]) -> dict[str, Any]:
     return {'content': parsed.get('content', '')}
 
 
-_GRAPH = single_node_graph('profile_narrative', _profile_narrative)
+# The Context Pack sections Brain 1 compiles, in the fixed order of the Speak
+# prompt's layers (Building_Brain2.md §9.2). Empty sections are left out.
+_PACK_SECTIONS = (
+    ('who', 'WHO THEY ARE'),
+    ('goal', 'THEIR GOAL'),
+    ('today', 'THEIR WORLD TODAY'),
+    ('loves', 'WHAT YOU KNOW ABOUT THEIR LIFE'),
+    ('story', 'STORY SO FAR'),
+    ('works', 'WHAT WORKS FOR THEM / WHAT TO AVOID'),
+)
+
+
+def _speak(payload: dict[str, Any]) -> dict[str, Any]:
+    """Brain 2's Speak step (Building_Brain2.md §9.3) — writes ONE chat reply.
+
+    Everything about *what* to say has already been decided: Brain 1's
+    Context Pack says who this person is and what's going on; the plan says
+    what this reply should do. This node only turns that into a short,
+    natural message in the persona's voice. The conversation is sent as real
+    user/assistant turns so the model can see what it already said. Plain
+    text out — no JSON — so there is no format for the model to fight.
+
+    `rewrite_feedback`, when present, lists why the previous attempt failed
+    Brain 2's Check; the model gets exactly one chance to fix it.
+    """
+    pack: dict[str, str] = payload.get('context_pack') or {}
+    first_name = (pack.get('first_name') or 'them').strip()
+    plan = (payload.get('plan') or '').strip()
+    feedback = (payload.get('rewrite_feedback') or '').strip()
+
+    voice = _prompt_file('voice.md').replace('{first_name}', first_name)
+    sections = [f'{title}\n{pack[key].strip()}' for key, title in _PACK_SECTIONS if (pack.get(key) or '').strip()]
+    system_prompt = '\n\n'.join(
+        [voice, *sections]
+        + ([f'YOUR PLAN FOR THIS REPLY\n{plan}'] if plan else [])
+        + [_prompt_file('style.md'), _prompt_file('examples/default.md')]
+        + ([f'YOUR LAST DRAFT WAS REJECTED BECAUSE: {feedback}. Write a new reply that fixes this.'] if feedback else [])
+        + ['Reply with only the message itself.']
+    )
+
+    messages = _as_turns(payload.get('conversation') or [], payload.get('latest_message') or '')
+    response = get_model_provider('large').chat(messages, system=system_prompt)
+    return {'content': _clean_reply(response, first_name), 'example_replies': _example_replies()}
+
+
+def _as_turns(conversation: list[dict[str, str]], latest_message: str) -> list[dict[str, str]]:
+    """Real chat turns: alternating, starting and ending with the person.
+
+    Consecutive same-role turns are merged (some providers reject them). When
+    there is no new message from the person — a proactive check-in — the last
+    turn says so plainly instead of inventing words for them.
+    """
+    turns = [
+        {'role': 'assistant' if t.get('role') == 'assistant' else 'user', 'content': (t.get('content') or '').strip()}
+        for t in conversation
+        if (t.get('content') or '').strip()
+    ]
+    latest = latest_message.strip()
+    turns.append({'role': 'user', 'content': latest or "(They haven't replied since your last message.)"})
+
+    merged: list[dict[str, str]] = []
+    for turn in turns:
+        if merged and merged[-1]['role'] == turn['role']:
+            merged[-1]['content'] += '\n' + turn['content']
+        else:
+            merged.append(dict(turn))
+    if merged[0]['role'] == 'assistant':
+        merged.insert(0, {'role': 'user', 'content': '(Conversation start.)'})
+    return merged
+
+
+def _clean_reply(text: str, first_name: str) -> str:
+    """Strips wrapping the model sometimes adds around the message itself."""
+    reply = (text or '').strip()
+    for prefix in ('Brain 2:', 'You:', 'Reply:', f'{first_name}:'):
+        if reply.lower().startswith(prefix.lower()):
+            reply = reply[len(prefix):].strip()
+    if len(reply) >= 2 and reply[0] == reply[-1] and reply[0] in '"“”\'':
+        reply = reply[1:-1].strip()
+    return reply
+
+
+def _prompt_file(name: str) -> str:
+    return (_PROMPTS_DIR / name).read_text().strip()
+
+
+def _example_replies() -> list[str]:
+    """The example lines, so Brain 2's Check can reject a copied example."""
+    return [line[len('You:'):].strip().strip('"') for line in _prompt_file('examples/default.md').splitlines() if line.startswith('You:')]
+
+
+_GRAPH = router_graph({'profile_narrative': _profile_narrative, 'speak': _speak}, default='profile_narrative')
 
 
 class Broca:
     """Speech production (ADD §8) — turns an already-reasoned understanding
 
-    into the words Brain 2 actually says. One node, one job:
-    `profile_narrative`. What used to be `SmartAgent._brain2_profile_narrative`.
+    into the words Brain 2 actually says. Two operations:
+    - `speak`: the chat reply (Brain 2's Speak step, Building_Brain2.md §9.3).
+    - `profile_narrative`: a durable Profile entry draft (kept for profile
+      proposals, which become separate from chat in Brain 2 Phase E).
     """
 
     name = 'broca'
@@ -159,7 +256,7 @@ class Broca:
         return [
             PlanStep(
                 tool='broca',
-                operation='profile_narrative',
+                operation=payload.get('operation', 'profile_narrative'),
                 risk_class=RiskClass.READ_ONLY,
                 args=payload,
             )

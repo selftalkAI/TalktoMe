@@ -4,12 +4,13 @@ from typing import Any
 
 from .. import memory_repo, profiles_repo
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
-from . import intentions_repo, profile_store
+from . import coach, intentions_repo, profile_store
+from .checks import check_reply
 
 # This module is Brain 2's orchestrator for the intention/support/Profile
 # loop (ADD §8.2, ADR-013) — it decides WHETHER and calls the right cognitive
-# agent (Amygdala for a support message, Broca's Area for a Profile
-# narrative, see `agentic-service/app/agents/`) to compose the language. It
+# agent (Amygdala for a support message; Brain 2's checked reply step,
+# `coach.py`, for the reply itself) to compose the language. It
 # never calls a model to decide whether something happened — that's
 # `intentions_repo.shortfall_streak`, a deterministic gate, same layer as
 # `memory_manager.py`'s write-gate. A model is only ever asked to compose
@@ -107,7 +108,13 @@ def offer_support(profile_email: str, intention: dict[str, Any], streak: int, ch
     result = _first_step_result(run)
     if result is None or not result.get('message'):
         return _fallback_support_message(intention, streak)
-    return {'message': result['message'], 'suggested_target_minutes': result.get('suggested_target_minutes')}
+
+    # Shown to the person, so it must pass Brain 2's Check like any reply
+    # (FSD BR-016). A failing message is dropped, not shown — Brain 2's own
+    # reply for the turn still carries the support context.
+    allowed = '\n'.join([str(intention['target_minutes']), str(streak), *(str(c['actual_minutes']) for c in checkins)])
+    message = result['message'] if check_reply(result['message'], allowed_text=allowed).passed else ''
+    return {'message': message, 'suggested_target_minutes': result.get('suggested_target_minutes')}
 
 
 def propose_refinement(
@@ -121,83 +128,62 @@ def propose_refinement(
     conversation_history: str | None = None,
     checkin_mode: bool = False,
     escalation_level: int = 0,
+    conversation: list[dict[str, str]] | None = None,
+    trigger: str = 'message',
 ) -> dict[str, Any]:
-    """Drafts a Profile proposal for any domain — never writes it. Returns a
+    """Brain 2's reply for this turn, stored as a `profile_entries` row with
+    status='proposed' — never written as durable; only `accept_proposal` can
+    change that.
 
-    `profile_entries` row with status='proposed'; only `accept_proposal` can
-    ever change that.
+    The text comes from Brain 2's checked reply step (`coach.reply`: Context
+    Pack → plan → Speak → Check → rewrite once → safe fallback), so nothing
+    that fails Check is ever stored or shown (FSD BR-016). Storing every chat
+    reply as a proposal is the pre-redesign contract callers still rely on;
+    Brain 2 Phase E separates chat replies from (rare) profile proposals.
 
-    Two ways to reach this, per ADD §6.1/§8.2:
-    - The goal-adherence domain passes `intention`/`streak`/`support_message`
-      — its own deterministic ground truth (`intentions_repo`).
-    - Every other domain (skill, emotion, learning, reading, ...) passes none
-      of those; grounding instead comes from this domain's own active,
-      durable `memories` rows — the generic path any domain can use without
-      needing an intention/checkin/streak concept of its own.
-
-    `conversation_history`, when given, is the turn-by-turn transcript of
-    this exact back-and-forth so far (caller-built — this function has no
-    opinion on how far back it goes). Without it, `user_reflection` is the
-    ONLY thing Broca ever sees — it has no memory of its own prior message
-    or what the person was actually responding to, which makes a reply like
-    "how do I do that?" ungroundable. Distinct from `previous_entry_content`
-    below, which is only the last ACCEPTED Profile version, not the live
-    conversation.
-
-    `checkin_mode`, when True, tells Broca this draft exists specifically to
-    re-engage someone who's gone quiet or just said they didn't/couldn't do
-    it — not to log a status update. `escalation_level` (0-based) is how
-    many prior re-engagement attempts already got no response, so Broca can
-    deliberately avoid repeating its own earlier angle.
+    `conversation` is the thread so far as real turns
+    (`{'role': 'user'|'assistant', 'content': ...}`), not including
+    `user_reflection`. `conversation_history` is the older "User: …/Brain 2: …"
+    transcript string, still accepted and converted. `trigger` is 'message',
+    or 'silence'/'schedule' when Brain 2 reaches out without new input.
     """
-    previous = profile_store.get_accepted(profile_email, domain)
     domain_memories = memory_repo.list_memories(profile_email, status=memory_repo.ACTIVE, domain=domain)
+    checkins = intentions_repo.list_checkins(intention['intention_id'], profile_email) if intention else None
+    if not user_reflection.strip() and trigger == 'message':
+        trigger = 'schedule'
 
-    payload: dict[str, Any] = {
-        **_profile_facts(profile_email),
-        'domain': domain,
-        'user_reflection': user_reflection,
-        'previous_entry_content': previous['content'] if previous else None,
-        'domain_memories': [m['content'] for m in domain_memories],
-    }
-    if conversation_history:
-        payload['conversation_history'] = conversation_history
-    if checkin_mode:
-        payload['checkin_mode'] = True
-        payload['escalation_level'] = escalation_level
-    if intention is not None:
-        payload['title'] = intention['title']
-        payload['target_minutes'] = intention['target_minutes']
-        payload['streak'] = streak
-        payload['support_message'] = support_message
-
-    world_knowledge = _fetch_world_knowledge(
-        profile_email=profile_email,
-        domain=domain,
-        user_reflection=user_reflection,
-        domain_memories=[m['content'] for m in domain_memories],
+    result = coach.reply(
+        profile_email,
+        domain,
+        user_reflection,
+        conversation=conversation if conversation is not None else _turns_from_history(conversation_history),
+        trigger=trigger,
         intention=intention,
+        checkins=checkins,
+        streak=streak,
+        support_message=support_message,
+        checkin_mode=checkin_mode,
+        escalation_level=escalation_level,
     )
-    if world_knowledge:
-        payload['world_knowledge'] = world_knowledge
-
-    try:
-        agentic = AgenticServiceClient()
-        run = agentic.create_agent_run('broca', user_id=profile_email, goal=_as_json(payload))
-        result = _first_step_result(run)
-        content = (result or {}).get('content') or ''
-    except AgenticServiceError:
-        content = ''
-
-    if not content:
-        content = _fallback_profile_content(domain, user_reflection, intention, streak, support_message)
 
     return profile_store.propose(
         profile_email=profile_email,
         domain=domain,
-        content=content,
+        content=result['content'],
         source_memory_ids=source_memory_ids or [m['memory_id'] for m in domain_memories],
     )
+
+
+def _turns_from_history(conversation_history: str | None) -> list[dict[str, str]]:
+    """Converts the older "User: …" / "Brain 2: …" transcript into real turns."""
+    turns: list[dict[str, str]] = []
+    for line in (conversation_history or '').splitlines():
+        speaker, _, text = line.partition(':')
+        if not text.strip():
+            continue
+        role = 'assistant' if speaker.strip().lower().startswith('brain 2') else 'user'
+        turns.append({'role': role, 'content': text.strip()})
+    return turns
 
 
 def accept_proposal(profile_entry_id: str, profile_email: str) -> dict[str, Any]:
@@ -249,41 +235,6 @@ def adjust_intention(profile_email: str, intention_id: str, new_target_minutes: 
     return intentions_repo.supersede_intention(intention_id, profile_email, new_target_minutes)
 
 
-def _fetch_world_knowledge(
-    profile_email: str,
-    domain: str,
-    user_reflection: str,
-    domain_memories: list[str],
-    intention: dict[str, Any] | None,
-) -> str:
-    """Queries WorldKnowledge (ADD §8.2 step 5) for an outside benchmark to
-
-    compare against what Brain 1 has said in this domain — best-effort, same
-    contract as every other agent call here: an unreachable Agentic Service
-    or empty context just means no benchmark this time, never a failure of
-    the proposal itself.
-    """
-    context_parts = list(domain_memories)
-    if intention is not None:
-        context_parts.append(f"Intention: \"{intention['title']}\", target {intention['target_minutes']} min/day")
-    if user_reflection:
-        context_parts.append(user_reflection)
-    context = ' | '.join(context_parts)
-    if not context:
-        return ''
-
-    try:
-        agentic = AgenticServiceClient()
-        run = agentic.create_agent_run(
-            'world_knowledge', user_id=profile_email, goal=_as_json({'domain': domain, 'context': context})
-        )
-    except AgenticServiceError:
-        return ''
-
-    result = _first_step_result(run)
-    return (result or {}).get('benchmark') or ''
-
-
 def _first_step_result(run: dict[str, Any]) -> dict[str, Any] | None:
     if run.get('status') != 'completed':
         return None
@@ -306,27 +257,8 @@ def _fallback_support_message(intention: dict[str, Any], streak: int) -> dict[st
     """
     return {
         'message': (
-            f"I noticed {intention['title']} has been under {intention['target_minutes']} min/day for "
-            f'{streak} days running. What got in the way this week? And would a smaller daily target '
-            f'feel more doable right now than {intention["target_minutes"]} min — or is it something else?'
+            f"{intention['title']} has been under {intention['target_minutes']} minutes for {streak} days "
+            'running — that usually means the plan, not you, needs adjusting. What got in the way this week?'
         ),
         'suggested_target_minutes': None,
     }
-
-
-def _fallback_profile_content(
-    domain: str,
-    user_reflection: str,
-    intention: dict[str, Any] | None,
-    streak: int | None,
-    support_message: str,
-) -> str:
-    """Used only when the Agentic Service is unreachable — see `_fallback_support_message`."""
-    reflection = user_reflection or 'no reflection was recorded'
-    if intention is not None:
-        return (
-            f"For {streak} days you fell short of your {intention['target_minutes']} min/day goal for "
-            f"'{intention['title']}'. Brain 2 asked what was getting in the way instead of pushing harder. "
-            f'You said: {reflection}'
-        )
-    return f"In your '{domain}' domain, you reflected: {reflection}"

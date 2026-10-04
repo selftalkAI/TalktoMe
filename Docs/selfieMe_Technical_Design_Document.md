@@ -663,8 +663,9 @@ This section states what the repository actually runs today, so the rest of this
 | Book library | Knowledge Service | Ten books ingested into `document_chunks`, scope `knowledge_base` (4,857 chunks) via `scripts/ingest_pdfs.py`; not yet used by any agent |
 | Services | Modular monolith + workers | `orchestration-service` (FastAPI :8000), `agentic-service` (FastAPI :8001, LangGraph agents), `observability-portal` (Next.js :3000) |
 | Models | Per-step routing | Ollama `llama3.1` + `nomic-embed-text`; a Bedrock provider exists but no credentials are configured |
-| Brain 1 | Persona Service (§3) | `orchestration-service/app/brain1/` wraps the `profiles` row and four starter domains — the Persona is not built yet |
-| Brain 2 | Voice Service (§3) | Six brain-region agents in `agentic-service/app/agents/`; one Broca call per reply; no Check step |
+| Brain 1 | Persona Service (§3) | `orchestration-service/app/brain1/` wraps the `profiles` row and four starter domains, plus a stub Context Pack compiler (profile row + non-T3 memories + check-ins) — the Persona is not built yet |
+| Brain 2 | Voice Service (§3) | Phases A–B done: per-step model tiers (`get_model_provider(tier)`), Broca `speak` (Speak template from prompt files, real conversation turns), deterministic Check + one rewrite + safe fallback (`orchestration-service/app/brain2/checks.py`, `coach.py`), stub Context Pack (`app/brain1/context_pack.py`). Plan is rule-based until Decide (Phase C); chat replies are still stored as proposals until Phase E |
 | Auth | OIDC/sessions | Email + bcrypt password per profile; no sessions |
+| Tests | §14 suites | `pytest` in both services (`requirements-dev.txt`): Check rules + regression set of 30 real bad replies, reply step, Speak prompt assembly |
 
 The build order to close these gaps is in `Building_Brain1.md` §18 and `Building_Brain2.md` §15.
