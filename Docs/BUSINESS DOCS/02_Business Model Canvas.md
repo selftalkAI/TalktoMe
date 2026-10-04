@@ -13,8 +13,8 @@ Define how selfie.Me creates, delivers, and captures value.
 ## Value Proposition
 
 - Talk naturally; selfie.Me remembers — but only once you've actually reflected on it, never from raw input alone.
-- A second brain (Brain 2) that **integrates** the scattered pieces of your complete human persona — skill, emotion, relationships, career, learning, habits, and every other part of a life — into one coherent, standing Profile.
-- Brain 2 **enhances** that Profile by comparing your own reflection against outside expertise, proposing a refinement, and following through with ongoing support (nudges, reminders, check-ins) once you accept it — so the change takes hold in your life, not just in your data.
+- A living model of you — your Brain 1 Persona — that **integrates** the scattered pieces of your complete human persona (who you are, your people, places, tastes, goals, skills, feelings, story) into one structured, evolving Profile, starting from day one with expert knowledge distilled from trusted books.
+- A voice — Brain 2 — that **enhances** your life by talking to you the way you need right now (a friend, a big sister, a mentor, a coach…), with the right know-how, using everything your Persona knows — and following through with well-timed check-ins so change takes hold in your life, not just in your data.
 - See how opinions, goals, priorities and decisions evolved.
 - Receive reflections grounded in your own history rather than generic advice.
 - Maintain ownership, privacy, export, deletion and trusted-access controls.
@@ -32,7 +32,7 @@ iOS/Android app, web app, direct web acquisition, referrals, creator storytellin
 
 ## Key Resources
 
-Agentic orchestration (one orchestrator, many jobs — see `12_Agentic AI Architecture`), LLMs, speech-to-text, embeddings, ML/neural models, a personal knowledge graph, a World Knowledge lookup, secure storage, identity and privacy infrastructure.
+Agentic AI (Brain 1's 13 core agents and Brain 2's persona-shaped reply pipeline — see `12_Agentic AI Architecture`), LLMs, speech-to-text, embeddings, ML/neural models, a personal knowledge graph, a World Knowledge lookup, secure storage, identity and privacy infrastructure.
 
 ## Costs
 
@@ -48,4 +48,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

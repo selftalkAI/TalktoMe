@@ -18,6 +18,10 @@ Unit, integration, API contract, end-to-end, migration, security and mobile regr
 - Contradiction handling.
 - Deletion propagation.
 - Zero Profile writes without a recorded explicit acceptance event, tested adversarially — release-blocking, same severity as a cross-user leak.
+- (V03) Brain 2 regression set: every real bad reply (meta-talk, prompt echo, repetition, listicles, hollow praise) must fail Check.
+- (V03) Brain 1 / Brain 2 behaviour scenarios as automated tests.
+- (V03) Persona guardrails: never claims to be human, never impersonates the user's real people, expert personas give general guidance only.
+- (V03) Safety red-team: crisis messages always get care, never coaching.
 
 ## Founder Test Set
 
@@ -29,4 +33,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

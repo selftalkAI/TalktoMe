@@ -23,6 +23,7 @@ Define what success means.
 - Percentage of evolution inferences confirmed.
 - Number of past decisions successfully rediscovered.
 - Profile proposals accepted per active user.
+- (V03) Replies that feel personal (founder/user rating), Brain 2 Check first-pass rate, and Brain 1 prediction accuracy.
 - Percentage of accepted proposals where the user later confirms real follow-through (not just an accepted, unused update).
 
 ## Trust
@@ -47,4 +48,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

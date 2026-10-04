@@ -1,8 +1,8 @@
 # Personal Memory Model
 
-*Version 0.3 | Company Document 13*
+*Version 0.4 | Company Document 13*
 
-Define the durable memory representation.
+Define the durable memory representation, and the structured profile built on top of it.
 
 ## Memory Object
 
@@ -10,7 +10,7 @@ Define the durable memory representation.
 
 ## Memory Types
 
-Experience, observation, story, fact, preference, belief, goal, decision, lesson, question, relationship event.
+Fact, preference, goal, relationship, event, routine, constraint, project context, user instruction — plus **learned strategy** (what has worked for this person).
 
 ## Provenance
 
@@ -20,9 +20,17 @@ Every derived memory remains linked to the original source so the user can inspe
 
 Store both capture time and event time because users often describe older events later.
 
-## Profile Layer
+## Conversation memory — three levels
 
-A memory only becomes part of a Profile once the user's own reflection is layered onto it — a raw fact or an unreflected-on article is memory, but not yet Profile-worthy. The Profile sits above Memory: a synthesized, versioned entry per domain of the complete human persona (skill, emotion, relationships, career, learning, habits — extensible, never a fixed list), built from active memories and beliefs in that domain. Like a memory, a Profile entry is never overwritten — an accepted refinement supersedes the prior version, which remains in history — and it additionally carries a reference to the outside-knowledge source it was compared against.
+- **Working:** the last ~10 turns, verbatim.
+- **Episodic:** one summary per conversation — what happened, how they felt, their own quotes, commitments, open threads.
+- **Semantic:** the Brain 1 Profile.
+
+## The Brain 1 Profile
+
+A structured, evidence-backed model of the whole person, maintained by Brain 1's core agents: Identity · People · Inner world · Body & health · Life map & places · Tastes & rituals · Goals & journeys · Story & memory · What works · Communication · Boundaries & consent · Open questions — plus a live Here & Now section (weather, time, schedule) that is never stored long-term.
+
+Every field records its value, source, evidence, confidence, status (hypothesis / confirmed / superseded), sensitivity and owner. Nothing is overwritten: every change creates a new profile version, and that history is the person's growth record — and, one day, their legacy.
 
 ## Working Status
 
@@ -30,4 +38,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

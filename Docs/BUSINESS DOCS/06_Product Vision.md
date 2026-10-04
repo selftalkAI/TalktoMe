@@ -6,7 +6,7 @@ Define what the product should become.
 
 ## Product Vision
 
-selfie.Me is Brain 2 — a second brain built entirely for the user (Brain 1). It **integrates** the scattered pieces of the user's complete human persona (skill, emotion, relationships, career, learning, habits, and every other part of a life) into a time-aware model of memories, beliefs, goals, decisions, and a versioned Profile per domain. It **enhances** that Profile by comparing it against outside expertise, proposing refinements, and — once accepted — following through with ongoing support so a change actually takes hold. Brain 2 has memory and reasoning but no hands: it proposes, and only the user's explicit acceptance makes anything durable or acted upon.
+selfie.Me is a second brain built entirely for the user. **Brain 1** is the user plus their Persona — a living, structured model of them maintained by agents; **Brain 2** is the voice that talks to them through the right persona for the moment. Together they **integrate** the scattered pieces of the user's complete human persona (skill, emotion, relationships, career, learning, habits, and every other part of a life) into a time-aware model of memories, beliefs, goals, decisions, and a versioned Profile per domain. It **enhances** that Profile by comparing it against outside expertise, proposing refinements, and — once accepted — following through with ongoing support so a change actually takes hold. Neither brain has hands: they propose, and only the user's explicit acceptance makes anything durable or acted upon.
 
 ## Product Evolution
 
@@ -29,4 +29,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

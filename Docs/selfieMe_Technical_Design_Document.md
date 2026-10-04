@@ -1,6 +1,6 @@
 # selfie.Me — Technical Design Document (TDD)
 
-**Version:** V02 — Adds the Profile Service, World Knowledge Gateway, Scheduler, and the profile refinement pipeline (supersedes V01)
+**Version:** V03 — Implements Brain 1 (Persona: core agents, structured profile, Context Pack, knowledge base) and Brain 2 (Voice: five-step persona-shaped reply pipeline). Adds §34, an honest snapshot of what the repository runs today (supersedes V02)
 **Status:** Approved working baseline for founder pilot engineering
 **Owners:** Head of Engineering (accountable), Engineering leads per domain (`§4`), Head of Security/DPO (security/privacy sections)
 
@@ -21,6 +21,17 @@
 - Added §26, an on-call runbook example (vector index rebuild), and §27, a request-scoped example trace, since v0.1 asserted observability requirements without ever showing what one looks like end to end.
 - Converted every previously malformed table into valid markdown.
 - Moved the "interpretation guide" to the end, matching the structural fix applied to the other two documents.
+
+### Changelog since V02 (V03)
+
+- §3: added the Brain 1 Persona service, Brain 2 Voice service, Knowledge service and Here & Now adapter; the V02 "Profile Service" is now part of Brain 1.
+- §4/§21: added `brain1_profile_versions`, `brain1_outcomes`, `brain1_open_questions`, `brain1_runs`; `memories.type` gains `learned_strategy`.
+- §5.4: replaced the profile refinement pipeline with the **turn pipeline** (`ADD §8.2`).
+- §9: added Brain 1 / Brain 2 endpoints (turn, persona view, corrections, voice preference).
+- §14: added scenario tests, the Brain 2 regression set (real bad outputs), persona-guardrail and safety red-team suites.
+- §20: per-step model routing (`ADD ADR-023`).
+- §22: Reflector and proactive check-in jobs replace the V02 per-domain re-check job.
+- §34 (new): current implementation snapshot — SQLite + Chroma locally, Ollama only — and how it maps to the PostgreSQL/pgvector target.
 
 ### Changelog since V01 (V02)
 
@@ -71,7 +82,10 @@ Technology names are proposed choices, validated against team expertise, cost, d
 | File/Ingestion Service | Uploads, malware scanning, parsing, chunking, metadata, and embeddings. |
 | Notification Service | Task completion/approval notifications when enabled. |
 | Audit Service | Append-only security/product audit events with redaction. |
-| Profile Service (new) | Synthesizes versioned, per-domain Profile entries from Memory/Belief; runs the refinement loop (§5.4); enforces accept-before-supersede (`ADD ADR-014`). |
+| Brain 1 Persona Service (V03) | Safety Core, Router, 13 core agents (LangGraph think → act → check, bounded steps/cost) and their 68 sub-agents (single call or rules), shared workspace, Brain 1 Profile (12 sections + Here & Now) with evidence records and versions, Context Pack compiler with privacy filter, Persona Selector, Outcome scorer, Reflector, question queue. Enforces accept-before-supersede (`ADD ADR-014`). Spec: `Building_Brain1.md`. |
+| Brain 2 Voice Service (V03) | Five-step reply pipeline — Understand, Decide (+ deterministic plan rules), Speak (2–3 candidates in the persona's voice), Check (deterministic checks + judge, rewrite once, safe fallback), Remember (episodic consolidation, profile proposals separate from chat). Spec: `Building_Brain2.md`. |
+| Knowledge Service (V03) | Principle cards (reviewed YAML distilled from the book library) and book retrieval over the `knowledge_base` RAG scope by similarity only (`ADD ADR-020`). |
+| Here & Now adapter (V03) | Weather, time, season, holidays for the person's city; city-level by default, precise location only with opt-in. |
 | World Knowledge Gateway (new) | Provider-abstracted lookup of outside/expert domain benchmarks for Profile refinement; enforces minimum-necessary disclosure and zero-retention provider terms (`ADD ADR-015`). |
 
 ## 4. Core data model
@@ -95,7 +109,11 @@ Technology names are proposed choices, validated against team expertise, cost, d
 | Consent | `consent_id`, `user_id`, `scope`, `version`, `granted_at`, `revoked_at` |
 | ConnectorGrant | `grant_id`, `user_id`, `provider`, `scopes`, `encrypted_token_ref`, `status` |
 | AuditEvent | `event_id`, `principal_id`, `action`, `resource_type`, `resource_id`, `decision`, `metadata_redacted`, `created_at` |
-| ProfileEntry (new) | `profile_entry_id`, `user_id`, `domain`, `version`, `content`, `source_memory_ids`, `benchmark_ref`, `status` (`proposed`,`accepted`,`superseded`,`rejected`), `proposed_at`, `accepted_at`, `superseded_by` |
+| Brain1ProfileVersion (V03) | `version_id`, `user_id`, `version`, `profile_json` (12 sections, evidence refs), `created_at`, `reason` |
+| Brain1Outcome (V03) | `outcome_id`, `user_id`, `run_id`, `card_ids`, `voice`, `expertise`, `stance`, `outcome` (`change_talk`,`took_action`,`accepted`,`sustain`,`discord`,`silence`), `created_at` |
+| Brain1OpenQuestion (V03) | `question_id`, `user_id`, `core`, `sub_agent`, `question`, `priority`, `status` (`open`,`asked`,`answered`,`dropped`), `created_at` |
+| Brain1Run (V03) | `run_id`, `user_id`, `trigger`, `safety_level`, `cores`, `trace_json` (tool calls, signals, summaries, Context Pack hash, persona, plan, candidates, checks), `latency_ms`, `cost`, `created_at` |
+| ProfileEntry (V02, kept) | `profile_entry_id`, `user_id`, `domain`, `version`, `content`, `source_memory_ids`, `benchmark_ref`, `status` (`proposed`,`accepted`,`superseded`,`rejected`), `proposed_at`, `accepted_at`, `superseded_by` |
 
 A minimal executable DDL sketch is in §21 — v0.1 listed fields with no types or constraints, which is not directly implementable.
 
@@ -123,23 +141,24 @@ A candidate memory is a typed structured object, not free text. Minimum fields: 
 
 Exact identity uses stable normalized keys where possible. Semantic similarity may suggest duplicates but must not independently merge materially different facts. A new explicit statement that conflicts with an older time-sensitive memory normally supersedes the old memory while retaining history. A conflicting inference creates evidence against the belief rather than overwriting an explicit memory.
 
-### 5.4 Profile refinement pipeline (new — V02)
+### 5.4 Turn pipeline (V03 — replaces the V02 profile refinement pipeline)
 
-Implements `ADD §8.2`. Unlike the memory write pipeline above, this pipeline can be triggered either by new user input or by the Scheduler (§22) with no new input at all — the only difference is what starts step 3.
+Implements `ADD §8.2`. Triggered by a message, a silence/missed-check-in event, or the Scheduler.
 
-1. Input arrives (user, any modality) or the Scheduler enqueues a re-check job for an existing `ProfileEntry`.
-2. Orchestrator classifies the domain and interprets the content.
-3. Orchestrator evaluates whether the input reflects the user's own thinking, not just relayed content (`FSD FR-PROF-002`); if not, it emits a clarifying question and the pipeline suspends pending a reply.
-4. Profile Service reads the current `ProfileEntry` for that domain, if any (`status = accepted`).
-5. World Knowledge Gateway is queried for the domain's outside benchmark, passing only the minimum content needed (`FSD FR-PROF-008`).
-6. Orchestrator drafts a proposed `ProfileEntry` (`status = proposed`), referencing `source_memory_ids` and `benchmark_ref`.
-7. The proposal is returned to the user (no state change beyond `proposed`).
-8. On user response:
-   - **Accept** → the proposed row's status becomes `accepted`; the previous `accepted` row for that domain is set to `superseded` with `superseded_by` pointing at the new row — same supersession mechanics as memory (§5.3), never a destructive update.
-   - **Refine** → return to step 6 with the user's additional input.
-   - **Reject** → the proposed row's status becomes `rejected`; no `ProfileEntry` is superseded.
+| Step | Component | Output | Notes |
+| --- | --- | --- | --- |
+| 1 Safety | Brain 1 Safety Core | `ok` / `concern` / `crisis` | Rules + small model; `crisis` short-circuits to a reviewed care message. |
+| 2 Route | Brain 1 Router | 2–4 core ids | From message, active goal, recent context. |
+| 3 Investigate | Core agents | Area summaries, open questions, facet proposals | Each core: ≤ 6 tool steps; tools: `search_memories`, `search_books`, `get_principles`, `ask_core`, `get_checkins`, `propose_facet`, `queue_question`. |
+| 4 Compile | Context Pack compiler + Persona Selector | Context Pack (≤ ~2,000 tokens) + persona (voice, expertise, stance) | Privacy filter removes T3 without opt-in and "ask first" items not raised by the Human. |
+| 5 Understand | Brain 2 (Sensory Cortex) | `{intent, feeling, change_talk, asked_question, new_facts}` | JSON; small model. |
+| 6 Decide | Brain 2 (Prefrontal Cortex) + `plan_rules` | `{stance, moves, hook, question, principle}` | JSON; then code rules (safety, avoid-lists, persona/expertise limits, one question, answer her question first). |
+| 7 Speak | Brain 2 (Broca) | 2–3 candidates, plain text | Persona identity + Context Pack + plan + style + examples + real conversation turns. |
+| 8 Check | Brain 2 (Anterior Cingulate) | Chosen reply | Deterministic checks then judge; rewrite once; else safe fallback. |
+| 9 Remember | Brain 2 (Hippocampus) → Brain 1 | Episodic summary, facet proposals, optional profile proposal | Memory write gate (§5); profile proposals need explicit acceptance. |
+| 10 Outcome | Brain 1 Outcome scorer | `brain1_outcomes` row | Scored on the Human's next message and check-ins. |
 
-Steps 4–7 are identical whether a human or the Scheduler started the run; this is what makes the recurring re-check (`FSD FR-PROF-005`) a thin wrapper around the same pipeline rather than a separate implementation.
+Every step is recorded in `brain1_runs` for explainability (§13, §27).
 
 ## 6. Memory retrieval pipeline
 
@@ -223,6 +242,11 @@ Agent execution is a state machine: `CREATED → PLANNING → READY → RUNNING 
 | `DELETE /v1/consents/{scope}` | Revoke consent. |
 | `POST /v1/exports` | Create data export. |
 | `DELETE /v1/account` | Initiate account deletion. |
+| `POST /v1/brain/turn` (V03) | Send a message (or a proactive trigger); runs the turn pipeline (§5.4); returns the reply, persona used and any profile proposal. |
+| `GET /v1/brain1/profile` (V03) | The person's Brain 1 Profile — 12 sections with evidence, confidence and status (mirror view). |
+| `PATCH /v1/brain1/profile/facets/{id}` (V03) | Correct, confirm, forget a facet; corrections always win. |
+| `PUT /v1/brain1/preferences/voice` (V03) | Set or clear the Human's preferred Brain 2 voice ("talk to me like a sister"). |
+| `GET /v1/brain1/runs/{run_id}` (V03) | Trace of one turn (cores, tools, Context Pack sections, persona, plan, checks) for observability. |
 | `GET /v1/profile/{domain}` | Get current accepted Profile entry and version history for a domain. |
 | `POST /v1/profile/{domain}/refine` | Submit input that starts or continues a refinement proposal for a domain (§5.4). |
 | `POST /v1/profile/proposals/{id}/accept` | Accept a proposed Profile entry; supersedes the prior version. |
@@ -281,6 +305,10 @@ A concrete example trace is given in §27.
 | Load | Concurrent streaming conversations, vector retrieval, queue throughput, long-running agents. |
 | Resilience | Provider outage, queue restart, DB failover, duplicate events, partial deletion failure. |
 | User acceptance | Onboarding clarity, memory control, decision flow, approval comprehension. |
+| Brain 1 / Brain 2 scenarios (V03) | Every scenario in `Building_Brain1.md` §15 and `Building_Brain2.md` Part III as an automated test (fake LLM for structure; real model nightly for quality). |
+| Brain 2 regression (V03) | Real bad outputs (meta-talk, prompt echo, repetition, listicles, therapy-speak) must all fail Check. |
+| Persona guardrails (V03) | Never claims to be human; never impersonates the Human's real people; blocked voices never used; expert personas give general guidance only. |
+| Safety red-team (V03) | Fixed distress/crisis set — 100% routed to care, 0% coaching. |
 
 ## 15. Deployment and delivery
 
@@ -333,6 +361,13 @@ The model gateway is the only application boundary allowed to invoke an external
 4. Enforce token, timeout, and output-size budgets: **target context budget of ≤8K tokens of retrieved personal context per request**, reserving headroom against typical 128K-token provider context windows for conversation history and system instructions; **request timeout budget of 10s for interactive chat, 60s for background extraction/analysis jobs.**
 5. Validate structured output against a schema and reject or repair only through bounded, observable logic (max 1 repair attempt before surfacing a recoverable failure).
 6. Return model metadata, usage, provider request ID, and policy version without exposing secrets or unrestricted prompts to ordinary logs.
+
+**Per-step routing (V03, `ADD ADR-023`):**
+
+| Task | Model class | MVP setting |
+| --- | --- | --- |
+| Safety, Understand, Check judge, sub-agents, Remember | Small / fast | Ollama `llama3.1` |
+| Core agents, Decide, Speak | Strongest available | Ollama `llama3.1` today; switch to a stronger provider by configuration only |
 
 Provider fallback must be task-compatible and privacy-compatible (`ADD ADR-012`). A provider with different retention, region, or tool behavior is not a valid fallback merely because it is available.
 
@@ -417,6 +452,46 @@ create table profile_entries (
     superseded_by uuid references profile_entries(profile_entry_id)
 );
 create index idx_profile_entries_user_domain_status on profile_entries (user_id, domain, status);
+
+-- V03: Brain 1
+create table brain1_profile_versions (
+    version_id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(user_id),
+    version int not null,
+    profile_json jsonb not null,
+    reason text,
+    created_at timestamptz not null default now(),
+    unique (user_id, version)
+);
+create table brain1_outcomes (
+    outcome_id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(user_id),
+    run_id uuid not null,
+    card_ids text[] not null default '{}',
+    voice text, expertise text, stance text,
+    outcome text not null check (outcome in
+        ('change_talk','took_action','accepted','sustain','discord','silence')),
+    created_at timestamptz not null default now()
+);
+create table brain1_open_questions (
+    question_id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(user_id),
+    core text not null, sub_agent text, question text not null,
+    priority int not null default 50,
+    status text not null default 'open' check (status in ('open','asked','answered','dropped')),
+    created_at timestamptz not null default now()
+);
+create table brain1_runs (
+    run_id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(user_id),
+    trigger text not null check (trigger in ('message','silence','schedule','event')),
+    safety_level text not null check (safety_level in ('ok','concern','crisis')),
+    cores text[] not null default '{}',
+    trace_json jsonb not null,
+    latency_ms int, cost numeric(10,5),
+    created_at timestamptz not null default now()
+);
+-- memories.type gains 'learned_strategy'
 ```
 
 ## 22. Queue, worker, and workflow behavior
@@ -425,7 +500,9 @@ Jobs declare a type, owner, attempt number, visibility timeout, maximum attempts
 
 Long-running agent and deletion workflows persist a checkpoint after each meaningful transition. Timers, approvals, retries, and compensation steps are represented as data so a worker restart cannot lose the workflow. Administrative replay requires an explicit operator action and must not bypass current authorization or deletion tombstones.
 
-A `scheduler` job type (new — V02) drives recurring Profile re-checks (`FSD FR-PROF-005`): one job per (`user_id`, `domain`) pair on a configurable cadence, enqueued by a time-based trigger rather than a user action. It carries the same type/owner/attempt/visibility-timeout/dedup-key contract as any other job above and enters the profile refinement pipeline at step 4 (§5.4) — it never bypasses the accept-before-supersede rule merely because no human initiated it.
+V03 replaces the per-domain re-check with two jobs: a nightly **Reflector** per user (patterns, confidence updates, learned-strategy consolidation, facet proposals) and a **proactive check-in** job (silence or missed check-in → Brain 1 decides whether reaching out helps, then runs the turn pipeline with `trigger = silence`). Both carry the same job contract as below and never bypass the write gate.
+
+(V02, superseded:) A `scheduler` job type drove recurring Profile re-checks (`FSD FR-PROF-005`): one job per (`user_id`, `domain`) pair on a configurable cadence, enqueued by a time-based trigger rather than a user action. It carries the same type/owner/attempt/visibility-timeout/dedup-key contract as any other job above and enters the profile refinement pipeline at step 4 (§5.4) — it never bypasses the accept-before-supersede rule merely because no human initiated it.
 
 ## 23. File ingestion and untrusted content
 
@@ -574,3 +651,20 @@ The technical design turns the functional contract and architecture principles i
 **Testing, delivery, and operations.** Unit tests validate local rules; contract tests protect boundaries; integration tests validate lifecycle flows; security tests challenge isolation and authority; AI evaluations measure quality; load and resilience tests validate operational assumptions.
 
 **Technical change rule.** Any change to a model provider, prompt, embedding model, schema, connector, retention policy, or authorization rule can affect user trust. Such changes require a version, owner, migration or rollback plan, evaluation evidence, and an update to the relevant functional and architecture documentation.
+
+## 34. Current implementation snapshot (V03)
+
+This section states what the repository actually runs today, so the rest of this document is never mistaken for a description of shipped code.
+
+| Area | Target (this document) | Today in the repository |
+| --- | --- | --- |
+| Transactional store | PostgreSQL 16 | **SQLite** at `Storage/sql_storage/selfie_me.db` (`orchestration-service/app/db.py`); `docker-compose.yml` Postgres/Redis are provisioned but unused |
+| Vector index | pgvector, HNSW | **Chroma** at `Storage/rag_storage/` (`rag_store.py`): collections `moments`, `memories`, `profile_understanding`, `document_chunks` |
+| Book library | Knowledge Service | Ten books ingested into `document_chunks`, scope `knowledge_base` (4,857 chunks) via `scripts/ingest_pdfs.py`; not yet used by any agent |
+| Services | Modular monolith + workers | `orchestration-service` (FastAPI :8000), `agentic-service` (FastAPI :8001, LangGraph agents), `observability-portal` (Next.js :3000) |
+| Models | Per-step routing | Ollama `llama3.1` + `nomic-embed-text`; a Bedrock provider exists but no credentials are configured |
+| Brain 1 | Persona Service (§3) | `orchestration-service/app/brain1/` wraps the `profiles` row and four starter domains — the Persona is not built yet |
+| Brain 2 | Voice Service (§3) | Six brain-region agents in `agentic-service/app/agents/`; one Broca call per reply; no Check step |
+| Auth | OIDC/sessions | Email + bcrypt password per profile; no sessions |
+
+The build order to close these gaps is in `Building_Brain1.md` §18 and `Building_Brain2.md` §15.

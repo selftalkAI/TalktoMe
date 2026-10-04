@@ -1,47 +1,53 @@
 # Agentic AI Architecture
 
-*Version 0.3 | Company Document 12*
+*Version 0.4 | Company Document 12*
 
-Define how Brain 2's intelligence is structured, and its boundaries.
+Define how selfie.Me's intelligence is structured, and its boundaries.
 
 ## Two Brains
 
-Brain 1 is the user — sovereign, the only actor who ever decides or acts. Brain 2 is selfie.Me: everything described below belongs to Brain 2, and none of it has independent authority over Brain 1.
+- **Brain 1 = the Human + the Persona.** The Human is the only authority. The Persona is an agentic model of the Human, built and maintained by selfie.Me on their behalf. It never talks to the Human and never writes anything durable without their yes.
+- **Brain 2 = the Voice.** One LLM that talks to the Human through a persona chosen by Brain 1.
 
-## One Orchestrator, Many Jobs
+This supersedes the V0.3 "one orchestrator, many jobs" framing: understanding the person and speaking to the person are now separate, explicitly designed systems.
 
-Brain 2 is not a set of separate AI agents. It is **one orchestrating model** that takes on different jobs depending on where it is in a conversation or workflow:
+## Brain 1 — 13 core agents, 68 sub-agents
 
-- **Capture** — ingests voice/text and preserves source provenance.
-- **Memory formation** — creates durable memory objects and links entities.
-- **Integration** — synthesizes memories and beliefs across the complete human persona into one coherent, standing Profile per domain, rather than leaving them as disconnected records.
-- **Belief evolution** — maintains time-versioned opinions/beliefs and detects change.
-- **Decision tracking** — records decision, rationale, alternatives, expectation and outcome.
-- **Reflection** — periodically identifies meaningful changes and recurring patterns.
-- **Advising** — uses relevant personal history when the user faces a new decision.
-- **Integrity checking** — verifies evidence, confidence, permissions and fact-vs-inference boundaries.
-- **Profile refinement (enhance)** — runs the propose/accept/refine/reject loop per domain — a skill, an emotion, a relationship, a habit, a learning area, or any other part of the persona — comparing the user's own reflection against outside knowledge, then following through with support once accepted.
+Each core agent owns one area of life and is a real agent (goal, tools, bounded think → act → check loop, its own facets and open questions). Sub-agents are lightweight lenses the core calls.
 
-The orchestrator itself holds no memory of its own between turns — everything durable lives in the tools below.
+| Core | Example sub-agents |
+| --- | --- |
+| Identity | Personality, Values, Strengths, Culture |
+| Mind | Emotion, Stress, Self-Talk, Self-Worth, Mindset |
+| Body | Fitness, Nutrition, Sleep, Energy, Health Conditions |
+| Behaviour | Motivation, Habits, Readiness, Barriers, Goals |
+| Relationships | Partner, Parenting, Family, Friends, Communication Style |
+| Work | Career, Productivity, Work-Life Balance |
+| Money | Spending, Saving, Money Mindset, Financial Goals |
+| Growth | Learning Style, Skills, Reading, Curiosity, Creativity |
+| Lifestyle | Daily Rhythm, Places, Tastes & Preferences, Rituals |
+| Meaning | Purpose, Faith, Gratitude, Legacy |
+| Life Story | Life Events, Growth Narrative |
+| Safety (always on) | Wellbeing Guard, Boundaries & Consent |
+| Here & Now (always on) | Weather, Time & Season, Local Calendar, Today's Schedule |
 
-## Tools
+Supporting parts: Router, shared workspace, Context Pack compiler, Persona Selector, Outcome scorer, Reflector, question queue, Knowledge service (principle cards + book library).
 
-- **Memory Store, Belief Store, Decision Store** — durable, versioned, user-scoped (PostgreSQL).
-- **Profile Store** — versioned Profile entries per domain, synthesized from the Memory and Belief Stores.
-- **World Knowledge Gateway** — provider-abstracted lookup of outside/expert domain knowledge, used only to draft a Profile proposal, never to write it.
-- **Scheduler** — wakes the orchestrator on a recurring cadence to re-check an existing Profile entry, without needing new user input.
+## Brain 2 — five steps per reply
 
-## Orchestration
+Understand → Decide → Speak → Check → Remember, implemented by the existing brain-region agents (Sensory Cortex, Prefrontal Cortex, Broca, Hippocampus) plus a new Anterior Cingulate for the Check.
 
-Event-driven stateful workflow: new capture -> classify -> extract -> retrieve related state -> compare (against the user's own history, and, for Profile work, against outside knowledge) -> update graph -> evaluate significance -> optionally prepare a reflection or a Profile proposal -> await/record user confirmation -> on acceptance, follow through with ongoing support.
+## Personas
+
+voice (friend, big sister/brother, mother-like, father-like, grandparent-like, mentor, buddy, coach) × expertise (fitness, nutrition, sleep, money, career, parenting, relationships, mind & emotions, skills, meaning) × stance (listen, motivate, plan, teach, challenge, celebrate, mirror, ask).
 
 ## Boundaries
 
-- The orchestrator cannot silently rewrite historical records.
-- The orchestrator cannot treat inference as user fact.
-- The orchestrator cannot share personal information without authorization.
+- Neither brain writes durable personal context except through the memory write gate; inferred facts and profile narratives need the Human's explicit confirmation.
+- No reply reaches the Human without passing Check.
+- Safety overrides every persona.
+- Personas never impersonate the Human's real people and always disclose being an AI when asked; expert personas give general guidance only.
 - High-impact external actions are outside V1.
-- The orchestrator may never supersede an existing Profile entry without the user's recorded acceptance — whether the run was triggered by the user or by the Scheduler.
 
 ## Working Status
 
@@ -49,4 +55,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02), specifically ADR-013 (Brain 2 is one stateless orchestrator, not independent agents).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

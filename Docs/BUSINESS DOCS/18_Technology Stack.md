@@ -14,7 +14,7 @@ Python, PyTorch, Hugging Face, scikit-learn, XGBoost/LightGBM.
 
 ## Agent Orchestration
 
-Stateful graph/workflow framework such as LangGraph, running **one orchestrator** (Brain 2) with deterministic guardrails around its decisions — not a framework for coordinating many independent agents.
+LangGraph: Brain 1's 13 core agents each run a bounded think → act → check graph with tools; Brain 2 runs a five-step reply pipeline (Understand, Decide, Speak, Check, Remember). Deterministic guardrails (write gate, plan rules, Check) sit around every model decision. Models via a gateway: Ollama locally today, a stronger provider per step when configured.
 
 ## Data
 
@@ -34,4 +34,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

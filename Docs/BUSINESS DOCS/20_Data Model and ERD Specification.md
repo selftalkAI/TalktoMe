@@ -28,6 +28,10 @@ Define the initial logical entities.
 - Permission
 - AuditEvent
 - **ProfileEntry:** domain, version, content, source memory/belief ids, benchmark reference, status (proposed/accepted/superseded/rejected)
+- **Brain1ProfileVersion (V03):** the structured 12-section profile as JSON, one row per version
+- **Brain1Outcome (V03):** how the user responded to a reply (persona and principles used, outcome)
+- **Brain1OpenQuestion (V03):** what Brain 1 still wants to learn, with priority and status
+- **Brain1Run (V03):** trace of one turn (cores, tools, Context Pack, persona, plan, checks)
 
 ## Key Relationships
 
@@ -39,4 +43,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

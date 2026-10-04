@@ -1,6 +1,6 @@
 # selfie.Me — Architecture Design Document (ADD)
 
-**Version:** V02 — Adds the Brain 1/Brain 2 conceptual model, the Profile layer, World Knowledge and Scheduler components, and the profile refinement loop (supersedes V01)
+**Version:** V03 — Brain 1 becomes Human + Persona (an agentic, structured model of the person); Brain 2 becomes the Voice (one LLM, many personas, a five-step reply pipeline with a Check step). Detailed designs: `Docs/FEATURES/Building_Brain1.md`, `Docs/FEATURES/Building_Brain2.md` (supersedes V02)
 **Status:** Approved working baseline for founder pilot engineering
 **Owners:** CEO/Founder (accountable), Head of Engineering (architecture), Head of Security/DPO (privacy & security sections)
 
@@ -23,6 +23,15 @@
 - Converted every previously malformed table (broken pipe/markdown artifacts from the source document pack) into valid tables.
 - Converted the "Open Questions" section into founder decisions with recorded rationale (§22) — a small number of items remain genuinely open and are marked as such.
 
+### Changelog since V02 (V03)
+
+- Rewrote §1.1: **Brain 1 = the Human (sole authority) + the Persona** (13 core agents, 68 sub-agents, the structured Brain 1 Profile, and a knowledge base). **Brain 2 = the Voice** — one LLM speaking through a persona (voice × expertise × stance) chosen by Brain 1. The authority invariant (ADR-007, ADR-014) is unchanged.
+- Added the Brain 1 and Brain 2 components to §4 and the Persona/Voice planes' dependencies.
+- Replaced §6.1's four fixed MVP domains (skill, emotion, learning, reading) with the **Brain 1 Profile**: 12 structured, evidence-backed sections plus a live Here & Now section, owned by the 13 core agents.
+- Replaced §8.2 (Profile refinement loop) with the **Brain 1 ↔ Brain 2 turn loop**: Safety → route → investigate → Context Pack + persona → Understand → Decide → Speak → Check → Remember → outcome. Accept-before-supersede still governs every durable write.
+- Added trust-boundary rows for the weather/time context provider and for personas (§9), a Safety Core row in §14, and ADR-017 to ADR-023 (§15).
+- Added §21 traceability rows for `FSD FR-B1-*`, `FR-B2-*`, `FR-PER-*`, and recorded the defaults adopted on 2026-10-03 in §22.
+
 ### Changelog since V01 (V02)
 
 - Added §1.1 (Conceptual model: Brain 1 and Brain 2), explaining the product's own working metaphor for "user" and "system" and how it maps onto the planes and services already defined below — added because the founder's product narrative and the architecture vocabulary were starting to drift apart.
@@ -42,9 +51,24 @@ Read it alongside `FSD` (what the product does) and `TDD` (how it is implemented
 
 ### 1.1 Conceptual model: Brain 1 and Brain 2
 
-Internally, and in product conversations with the founder, selfie.Me is described using a working metaphor: **Brain 1** is the user — sovereign, biological, the only actor who ever decides or acts. **Brain 2** is selfie.Me itself — the whole system described in this document, from the client through every plane in §4. Brain 2 has memory (§6), reasoning (§8), and a voice (the Model Gateway's output), but no hands: every consequential thing it produces is either informational (a surfaced insight, a proposed refinement) or gated behind explicit user approval (§8.1, §8.2, `FSD FR-AGT-003`).
+selfie.Me is described using a working metaphor of two brains. V03 makes both concrete:
 
-This is not a new component — it is a naming lens over the User actor and the selfie.Me system already defined in §3–§4. The lens exists because it makes one invariant easy to state and easy to test: **nothing Brain 2 produces is written into durable personal context, or acted on externally, without Brain 1's explicit acceptance** (formalized as ADR-007 for agent actions and ADR-014 for profile writes). Where this document says "the system" or "the orchestrator," it means Brain 2; where it says "the user," it means Brain 1.
+```
+BRAIN 1  =  the Human            +   the Persona
+            (the real person;        (an agentic, structured model of the person that
+             the only authority)      selfie.Me builds and maintains on their behalf)
+
+BRAIN 2  =  the Voice — one LLM that speaks to the Human through the persona Brain 1
+            picks for the moment (voice × expertise × stance)
+```
+
+- **The Human** decides. Nothing becomes durable personal context, and nothing is done externally, without the Human's explicit acceptance (ADR-007 for agent actions, ADR-014 for profile writes).
+- **The Persona** understands. It is 13 core agents (Identity, Mind, Body, Behaviour, Relationships, Work, Money, Growth, Lifestyle, Meaning, Life Story, Safety, Here & Now) owning 68 sub-agents, the **Brain 1 Profile** (§6.1), and a knowledge base distilled from expert books. It never talks to the Human. Over time it becomes the person's second brain — measured, not assumed ("Brain Strength", `Building_Brain1.md` §8.5).
+- **Brain 2** speaks. It is the only part that talks to the Human. For every reply Brain 1 compiles a **Context Pack** and picks a **persona** — a voice (friend, big sister, mother-like, mentor, coach…), an expertise (fitness coach, financial analyst, parenting guide…) and a stance (listen, motivate, plan, teach, challenge, celebrate, mirror, ask). Brain 2 then runs Understand → Decide → Speak → Check → Remember (`Building_Brain2.md`).
+
+The lens makes one invariant easy to state and test: **neither the Persona nor Brain 2 may write durable personal context, or act externally, without the Human's explicit acceptance.** Where this document says "the user," it means the Human; "Brain 1" without qualification means Human + Persona; "the orchestrator" and "the system" mean Brain 2 plus the services that support it.
+
+Detailed designs live in two companion specifications that this document treats as authoritative for their scope: `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`.
 
 ## 2. Architecture drivers
 
@@ -105,13 +129,14 @@ External AI & Third-Party Services
 | Plane | Components | Purpose |
 | --- | --- | --- |
 | Experience | Web/mobile clients, streaming gateway | User interaction and presentation. |
-| Intelligence | Orchestrator, model gateway, prompt registry, evaluators, World Knowledge gateway (§6.1, §8.2) | Reasoning and model mediation. |
-| Personal context | Memory service, belief service, retrieval/index, Profile service (§6.1) | Durable personalized understanding. |
+| Intelligence | **Brain 2 (Voice)**: Understand / Decide / Speak / Check / Remember steps, persona configs (voices, expertise packs), model gateway, prompt registry, evaluators, World Knowledge gateway (§8.2) | Reasoning, persona-shaped language, and model mediation. |
+| Persona (new — V03) | **Brain 1 (Persona)**: Safety Core, Router, 13 core agents + 68 sub-agents, shared workspace, Context Pack compiler, Persona Selector, Outcome scorer, Reflector, question queue, Knowledge service (principle cards + book retrieval) | Understanding the person: the structured, evolving model of Brain 1 (§6.1). |
+| Personal context | Memory service, belief service, retrieval/index, Brain 1 Profile (§6.1) | Durable personalized understanding — the storage underneath the Persona. |
 | Decision | Decision service, evidence snapshotting | Structured decision support. |
 | Action | Agent runtime, tool registry, connector adapters | Authorized external execution. |
 | Governance | Identity, authorization, consent, policy, audit | Trust, privacy, and control. |
 | Data | PostgreSQL, vector index, object store, cache, event/queue | Persistence and asynchronous processing. |
-| Operations | Telemetry, feature flags, configuration, CI/CD, Scheduler (recurring Profile re-checks, §8.2) | Reliability and safe evolution. |
+| Operations | Telemetry, feature flags, configuration, CI/CD, Scheduler (Brain 1 reflection, proactive check-ins, §8.2) | Reliability and safe evolution. |
 
 Planes are conceptual boundaries that clarify dependency and authority even when the initial implementation runs in one process (`TDD §37.2`).
 
@@ -146,19 +171,33 @@ Four distinct layers, each with different retention, correction, visibility, and
 
 This separation prevents a generated interpretation from being mistaken for user truth. Evidence answers "where did this come from?"; memory answers "what durable statement may be reused?"; belief answers "what tentative pattern does the system currently infer?"; a retrieval view answers "what small, purpose-specific subset may this request see?" (rationale in §32.1).
 
-### 6.1 Profile layer (Brain 1's profile, new — V02)
+### 6.1 The Brain 1 Profile (V03 — replaces the V02 per-domain Profile layer)
 
-A fifth, higher-order view sits above the four layers in the table above: the **Profile** — a synthesized, durable, versioned understanding of the user (Brain 1, §1.1), organized by life domain rather than by individual memory. MVP domains: skill, emotion, learning, reading — the set is extensible per user, not fixed at four.
+A higher-order view sits above the four layers in the table above: the **Brain 1 Profile** — one structured, evidence-backed model of the whole person, maintained by the Persona's core agents. It is built *from* governed memories and does not bypass ADR-004's memory/belief separation.
+
+| Section | Holds | Maintained by |
+| --- | --- | --- |
+| 1 Identity | Name, age, home city, roles, culture | Identity Core |
+| 2 People | Each person who matters, with relationship and context | Relationships Core |
+| 3 Inner world | Values, purpose, personality, fears, self-talk patterns | Identity · Mind · Meaning |
+| 4 Body & health | Fitness, sleep, energy, eating; conditions only with T3 opt-in | Body Core |
+| 5 Life map | Daily/weekly timeline and places | Lifestyle Core |
+| 6 Tastes & rituals | Food and drink, music, activities, weather likes/dislikes, rituals | Lifestyle Core |
+| 7 Goals & journeys | Goals with the person's own reason in their words, stage, progress | Behaviour Core |
+| 8 Story & memory | Life events, one summary per conversation, quotes, commitments, open threads | Life Story Core + Hippocampus |
+| 9 What works | Strategies, personas and stances with outcomes | Learned layer |
+| 10 Communication | How they like to be spoken to; voices requested and voices to avoid | Relationships Core |
+| 11 Boundaries & consent | Topics to avoid, opt-ins, check-in frequency | Safety Core |
+| 12 Open questions | What Brain 1 doesn't know yet | All cores |
+| Live: Here & Now | Weather, time, season, schedule, today's state — computed per turn, never stored long-term | Here & Now Core |
 
 | Property | Behavior |
 | --- | --- |
-| Composition | A Profile entry is synthesized from active memories and beliefs in its domain — it is not a new independent fact type and does not bypass ADR-004's memory/belief separation. |
-| Mutability | Versioned by supersession, identical to Memory (above, ADR-004): an accepted refinement creates a new version; the prior version is retained, never deleted. |
-| Refinement trigger | User-provided input in that domain, or a Scheduler-triggered periodic re-check (§8.2) — each produces a *proposal*, never a direct write. |
-| Write authority | Brain 2 may propose a refined Profile entry; only Brain 1's explicit acceptance supersedes the prior version (ADR-014) — the same authority pattern as agent approvals (§8, ADR-007), applied to profile writes instead of external actions. |
-| External grounding | A refinement proposal may draw on the World Knowledge component (§8.2) to compare the user's stated input against outside domain expertise — existing Memory/Belief processing (above, §14) only reasons over the user's own evidence and never does this. |
-
-The Profile is what a downstream personalization feature (e.g., a periodic skill or habit coaching surface) should read from — never a raw memory table scan — because it is the only layer that is both durable and pre-synthesized per domain.
+| Evidence | Every field records value, source (said / onboarding / inferred / connector), evidence references, confidence, status (hypothesis / confirmed / superseded), sensitivity tier and owning sub-agent. |
+| Mutability | Versioned by supersession (ADR-004). Every change produces a new profile version; history is the person's growth record. |
+| Write authority | Explicit statements become facets through the memory write gate; inferred facets stay `requires_confirmation` until the Human confirms; area narratives in `profile_entries` supersede only on explicit acceptance (ADR-014). Corrections by the Human always win. |
+| Use | Brain 2 never reads the raw profile. Brain 1 compiles a **Context Pack** per reply — only what matters now, privacy-filtered, with "hooks" (profile × moment) and unknowns (`Building_Brain1.md` §8.6). |
+| External grounding | Expert knowledge comes first from reviewed principle cards and the ingested book library; general World Knowledge is used second and framed as such (ADR-020). |
 
 ## 7. Data classification and encryption posture
 
@@ -215,21 +254,22 @@ The Agentic Service implements this loop as a LangGraph `StateGraph`: Planner an
 8. Planner/Observer determines whether the next step is still valid.
 9. Run completes with an audit summary.
 
-### 8.2 Profile refinement loop (new — V02)
+### 8.2 The Brain 1 ↔ Brain 2 turn loop (V03 — replaces the V02 profile refinement loop)
 
-A second, narrower sequence runs the Profile layer (§6.1). It reuses the Planner/Policy Gate/Executor/Observer roles above but never reaches the `CONSEQUENTIAL_WRITE`/`HIGH_IMPACT` risk classes, because its only possible write target is the user's own Profile, gated the same way regardless of risk class:
+Every reply, proactive check-in, and nightly reflection runs this loop. It reuses the Planner/Policy Gate/Executor/Observer roles for its tools but has no external write capability; its only durable writes are to the person's own memories and profile, gated as below.
 
-1. Input arrives from Brain 1 (any modality), or the Scheduler (§4, Operations plane) triggers a re-check with no new input.
-2. Orchestrator classifies the domain and interprets the content (existing model-gateway/orchestrator responsibility — no new component).
-3. If the input lacks enough of the user's own reflection to be attributable to them (not just relayed external content), the orchestrator asks a clarifying question and the sequence pauses for a reply. This check has no equivalent in §8.1 and exists specifically so a Profile entry always reflects the user's own synthesis, not a passthrough of something they merely read or heard (`FSD FR-PROF-002`).
-4. Memory Service Recall (§6) fetches the current Profile entry for that domain, if any.
-5. World Knowledge (§4) is queried for the outside/expert benchmark relevant to that domain, subject to the same minimum-necessary-data and zero-retention contract terms as any external provider (ADR-012, extended by ADR-015).
-6. Orchestrator drafts a proposed refinement from (input + reflection + current Profile entry + benchmark).
-7. The proposal is presented to Brain 1 — this is a disclosure of a draft, not a write, and requires no policy-gate approval of its own because nothing has changed yet.
-8. Brain 1 responds: accept, request further refinement (loop to step 6), or reject.
-9. On accept, Memory Service writes a new Profile entry version that supersedes the prior one (§6.1); on reject, nothing is written.
+1. **Trigger:** a message from the Human, a silence/missed check-in event, or the Scheduler (reflection).
+2. **Safety Core** (Brain 1) classifies `ok` / `concern` / `crisis`. `crisis` stops coaching and returns a care message with vetted resources; `concern` restricts Brain 2 to listening.
+3. **Router** selects 2–4 core agents; each investigates with tools (memories, principle cards, book search, check-ins, other cores) in a bounded think → act → check loop and returns an area summary.
+4. **Context Pack + persona:** Brain 1 compiles the Context Pack (§6.1) and the Persona Selector picks voice × expertise × stance (the Human's own choice always wins).
+5. **Understand** (Brain 2): structured read of the message — intent, feeling, change talk, question asked, new facts.
+6. **Decide** (Brain 2): a plan in the persona — stance, moves, at most one hook and one question — then deterministic code rules (safety, avoid-lists, persona and expertise limits).
+7. **Speak** (Brain 2): 2–3 candidate replies in the persona's voice.
+8. **Check** (Brain 2): deterministic checks (format, length, repetition, meta-talk, invented numbers, privacy) plus a judge; the best passing candidate is sent, else one rewrite, else a safe fallback.
+9. **Remember:** the turn is consolidated into episodic memory and facet proposals. Durable profile changes follow the write gate and, for confirmations and area narratives, the Human's explicit acceptance — the chat reply and a profile proposal are separate artifacts.
+10. **Outcome:** the Human's next message (and later check-ins) is scored; Brain 1 learns which principles, personas and stances work for this person.
 
-Every path through step 8 either produces a superseding version or produces nothing — there is no path where Brain 2 changes the Profile without an explicit accept (ADR-014).
+There is no path through this loop by which the Persona or Brain 2 changes durable personal context without passing the write gate, and no path that supersedes an accepted profile entry without the Human's explicit accept (ADR-014).
 
 ## 9. Trust boundaries
 
@@ -242,6 +282,8 @@ Every path through step 8 either produces a superseding version or produces noth
 | Agent ↔ Connector | Third-party API is untrusted/external. | Scoped OAuth, schema validation, approvals, idempotency. |
 | Files/tool output ↔ Model | Content may contain adversarial instructions. | Content/instruction separation, sanitization, tool policy. |
 | Orchestrator ↔ World Knowledge provider (new) | Provider is an external processing boundary, same class as an LLM provider. | Minimum data, routing policy, zero-retention/no-training contract terms (§30.2, ADR-015), no secrets in prompts. |
+| Persona ↔ Here & Now providers (new — V03) | Weather/time/holiday providers are external. | City-level location only by default; precise location only with opt-in; no personal content in queries. |
+| Brain 2 persona ↔ Human (new — V03) | A persona may sound like family but must never deceive. | Never impersonates the Human's real people; always discloses being an AI when asked; voices that could hurt are blocked by the Persona Selector (ADR-021). |
 | Brain 1 ↔ Legacy Viewer — a second person, e.g. a family member (not implemented) | Not implemented in MVP; would require a new authorization model distinct from every other boundary in this table, since it deliberately allows a second natural person to read a user's Profile. | None defined yet — tracked as an open question (§22); must not be built as a silent extension of any existing boundary. |
 
 ## 10. Data architecture
@@ -318,7 +360,8 @@ This three-gate model prevents "stored therefore usable everywhere" behavior: in
 | Unsafe autonomous action | Risk classes, approvals, scoped credentials, cancellation, and audit (§8). |
 | Opaque decision advice | Evidence/assumption/preference separation and decision snapshots (`FSD §4.5`). |
 | Model drift | Versioned model/prompt registry plus recurring evaluation suites (§19). |
-| Self-harm or crisis disclosure | Content classifier flags high-risk disclosures; the assistant responds with a documented, reviewed safety script and surfaces crisis resources rather than attempting open-ended personalized advice — this path bypasses ordinary memory-write eligibility entirely and is excluded from durable memory unless the user explicitly asks it to be retained. |
+| Generic, repetitive or meta replies (new — V03) | Brain 2's Check step rejects replies with lists, meta-talk, "the user", prompt echo, repetition, invented numbers or privacy leaks before the Human sees them (ADR-019). |
+| Self-harm or crisis disclosure | The Brain 1 Safety Core runs first on every input and overrides every persona (§8.2). Content classifier flags high-risk disclosures; the assistant responds with a documented, reviewed safety script and surfaces crisis resources rather than attempting open-ended personalized advice — this path bypasses ordinary memory-write eligibility entirely and is excluded from durable memory unless the user explicitly asks it to be retained. |
 
 ## 15. Architecture Decision Records
 
@@ -342,6 +385,13 @@ Each ADR states context, decision, and consequences so a future team can tell wh
 | ADR-014 (new, V02) | A Profile refinement proposal (§8.2) may never supersede an existing Profile entry without the owning user's explicit acceptance. | Mirrors ADR-007 for agent actions; without it, a Profile — designed to represent the user to themselves and, later, to their family — could silently drift from what the user actually believes about themselves. | Foundational; not expected to change. |
 | ADR-015 (new, V02) | World Knowledge provider calls are subject to the same zero-retention/no-training contractual bar as Model Gateway providers (ADR-012). | A domain-benchmark query can itself leak sensitive context (e.g., a query about discussing a family diagnosis reveals a T3-adjacent fact); it is not lower-risk than a model call merely because it looks like a search. | If no provider meets this bar for a given domain, that domain's refinement loop (§8.2) is disabled rather than shipped with a weaker contract. |
 | ADR-016 (new, V02) | Legacy/Future Generations access — allowing a person other than the account owner to query a user's Profile, potentially after the owner's death — is explicitly out of scope for MVP and is not authorized by any existing consent or authorization mechanism in this document. | This conflicts by design with the cross-user isolation invariant (§32.8, `FSD FR-ID-005`) unless a dedicated, separately reviewed authorization and (for posthumous access) estate/legal framework is built. Building it as an extension of an existing boundary would be a silent privacy regression. | Requires a dedicated ADR, DPO/legal review, and probably a new consent primitive before any implementation; tracked as an open founder decision in §22, not a design detail to improvise later. |
+| ADR-017 (new, V03) | Brain 1 = Human + Persona. The Persona is an agentic model of the person (13 core agents, 68 sub-agents, structured profile) that never talks to the Human and never has write authority of its own. | Brain 2's replies were generic because it knew almost nothing about the person; the person's model needs an owner. | Foundational; revisit only if the authority invariant changes. |
+| ADR-018 (new, V03) | Agency lives in the 13 core agents (bounded think → act → check loops with tools); sub-agents are lightweight single-call or rule-based lenses. | Keeps latency, cost and debuggability manageable. | Revisit if a sub-agent needs multi-step reasoning repeatedly. |
+| ADR-019 (new, V03) | Brain 2 replies are produced in five steps (Understand, Decide, Speak, Check, Remember); no reply reaches the Human without passing Check. | One overloaded call produced meta-talk, prompt echo, repetition and listicles in production data. | Foundational. |
+| ADR-020 (new, V03) | Brain 1's Base knowledge comes from reviewed principle cards distilled from a curated book library, with book retrieval by similarity only; general World Knowledge is secondary and framed as such. | The ten ingested books were unused; LLM general knowledge produced generic advice. | Revisit as the library grows; gap books are added only with review. |
+| ADR-021 (new, V03) | Brain 2 speaks through personas (voice × expertise × stance) picked per reply by Brain 1; the Human's explicit choice always wins; personas never impersonate the Human's real people and always disclose being an AI when asked; expert personas give general guidance only. | People need more than a coach; personas must not deceive or cause harm. | Revisit voice list with user research. |
+| ADR-022 (new, V03) | A chat reply and a profile proposal are separate artifacts; profile proposals are rare and need explicit acceptance. | Every chat reply had been stored as a "Profile draft". | Foundational. |
+| ADR-023 (new, V03) | Model routing is per step: small/local models for Understand, Check and sub-agents; the strongest available model for Decide, Speak and core agents. MVP runs on Ollama (llama3.1) until a stronger provider is configured. | Quality depends mostly on Decide/Speak; cost on everything else. | Switch Decide/Speak to a stronger provider as soon as credentials exist (`agentic-service/.env`). |
 
 ## 16. Deployment topology
 
@@ -423,7 +473,10 @@ Conversation content is retained 24 months on a rolling basis, then archived to 
 | Privacy and consent | `FSD FR-PRV-*` | Policy/Consent, deletion coordinator, secrets, KMS | Governance / Data |
 | Safety and grounding | `FSD FR-SAFE-*` | Policy, Model Gateway, retrieval controls | Intelligence / Governance |
 | Feedback and evaluation | `FSD FR-FBK-*` | Telemetry, evaluation pipeline | Operations |
-| Profile and refinement (new) | `FSD FR-PROF-*` | Profile Service (extends Memory Service), World Knowledge Gateway, Scheduler | Personal Context / Intelligence / Operations |
+| Profile (V03) | `FSD FR-PROF-*` | Brain 1 Profile over Memory Service, `profile_entries`, Scheduler | Personal Context / Operations |
+| Brain 1 Persona (V03) | `FSD FR-B1-*` | Safety Core, Router, core agents, Context Pack compiler, Knowledge service, Reflector | Persona / Personal Context |
+| Brain 2 Voice (V03) | `FSD FR-B2-*` | Understand / Decide / Speak / Check / Remember, model gateway | Intelligence |
+| Personas (V03) | `FSD FR-PER-*` | Persona Selector (Brain 1), voice and expertise configs (Brain 2) | Persona / Intelligence |
 
 ## 22. Founder decisions on prior open questions
 
@@ -441,6 +494,8 @@ v0.1 left ten open questions unresolved. A founder pilot cannot proceed with all
 | Retention periods? | Conversation content: 24 months rolling, then archive. Audit/security events: 3 years. Deleted-account backups: purged within 90 days of deletion-workflow completion, bounded by backup rotation. | Matches typical security-audit retention norms while keeping deletion promises meaningful (a "deleted" account should not linger in backups indefinitely). |
 | Model-provider data retention/training policy? | Contractual zero-retention, no-training terms required from any model provider before integration (ADR-012). | Personal memory data must never become another company's training data — this is a brand-defining commitment, not a negotiable procurement detail. |
 | Quantitative pilot success thresholds? | ≥40% week-4 retention, ≥70% of sampled stored memories judged accurate by the owning user, 0 confirmed cross-user data leakage incidents, NPS ≥ 40. | Gives the team an unambiguous "did the pilot work" answer instead of a subjective retrospective. |
+
+**Adopted by default on 2026-10-03 (V03)** — the proposed defaults in `Building_Brain1.md` §22 and `Building_Brain2.md` §21 are adopted as the working baseline and can be changed by the founder at any time. The most material ones: Brain 1 picks the persona every reply and the Human can override it; weather/time use the onboarding city, precise location only with opt-in; T3 areas (health, finances) need per-category opt-in; Brain 2 runs on Ollama until a stronger provider is configured; profile proposals are separate from chat.
 
 **Genuinely still open (require product research, not just a founder call):**
 

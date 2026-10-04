@@ -1,6 +1,6 @@
 # selfie.Me — Functional Specification Document (FSD)
 
-**Version:** V02 — Adds Profile/refinement requirements (FR-PROF-*) and flags Legacy/Future Generations access as an explicit non-goal pending a dedicated decision (supersedes V01)
+**Version:** V03 — Adds Brain 1 (FR-B1-*), Brain 2 (FR-B2-*) and Persona (FR-PER-*) requirements; the Profile becomes the structured Brain 1 Profile (supersedes V02)
 **Status:** Approved working baseline for founder pilot
 **Owners:** CEO/Founder (accountable), Head of Product (functional scope), Head of Security/DPO (privacy sections)
 
@@ -21,6 +21,15 @@
 - Tightened previously vague requirements into testable statements (e.g., FR-MEM-009 sensitivity handling now points to concrete tiers; FR-AGT-003 approval requirement now references the risk classes defined in `TDD §16.1`).
 - Converted every previously malformed table into valid markdown.
 - Moved the "interpretation guide" to the end of the document, matching the same structural fix applied to the ADD.
+
+### Changelog since V02 (V03)
+
+- §2: the single "AI Assistant" actor is split into **Brain 1 Persona** (understands; never talks to the user) and **Brain 2 Voice** (the only part that talks to the user, through a persona).
+- §3.10: FR-PROF-001 no longer fixes four MVP domains; the Profile is the 12-section Brain 1 Profile (`ADD §6.1`).
+- Added §3.11 Brain 1 (`FR-B1-*`), §3.12 Brain 2 (`FR-B2-*`), §3.13 Personas (`FR-PER-*`).
+- Added journeys §5.7 (an everyday turn) and §5.8 (choosing how Brain 2 talks).
+- Added BR-015 to BR-019, acceptance criteria and guardrail metrics for replies, personas and safety.
+- Detailed designs: `Docs/FEATURES/Building_Brain1.md`, `Docs/FEATURES/Building_Brain2.md`.
 
 ### Changelog since V01 (V02)
 
@@ -68,7 +77,8 @@ This FSD defines the functional behavior of selfie.Me v1/MVP: actors, capabiliti
 | Actor | Description | Key permissions |
 | --- | --- | --- |
 | End User | Primary owner of a selfie.Me account. | Chat, manage memory, configure consent, create decisions, approve actions, export/delete data. |
-| AI Assistant | Conversational reasoning layer acting for the user within policy. | Read authorized context, propose memory, create plans, call approved tools. |
+| Brain 1 Persona (V03) | The agentic model of the user: core agents, structured profile, knowledge base. Never talks to the user. | Read authorized context, propose facets and memories, pick Brain 2's persona, queue questions; no write authority of its own. |
+| Brain 2 Voice (V03) | The conversational layer — the only part that talks to the user, through a persona chosen by Brain 1. | Read the Context Pack, reply, propose profile changes, call approved tools within policy. |
 | Memory Service | System actor managing durable personal context. | Store/retrieve/update/supersede/delete governed memory. |
 | Agent Runtime | Executes multi-step tasks. | Plan, call tools, pause for approval, record execution. |
 | External Tool/Connector | Third-party service or internal capability. | Receives only the minimum authorized data for a specific action. |
@@ -194,16 +204,57 @@ This FSD defines the functional behavior of selfie.Me v1/MVP: actors, capabiliti
 
 | ID | Requirement |
 | --- | --- |
-| FR-PROF-001 | The system shall maintain a versioned Profile entry per domain (MVP domains: skill, emotion, learning, reading; extensible) synthesized from the user's active memories and beliefs in that domain (`ADD §6.1`). |
-| FR-PROF-002 | The system shall not synthesize or refine a Profile entry from content the user has not themselves reflected on — content merely relayed (e.g., an article, a video) requires the user's own added reflection before it may inform a Profile entry (`ADD §8.2` step 3). |
+| FR-PROF-001 | The system shall maintain a versioned, structured Brain 1 Profile (12 sections plus a live Here & Now section, `ADD §6.1`) built from the user's governed memories, plus optional per-area narratives in `profile_entries`. |
+| FR-PROF-002 | The system shall not synthesize or refine a Profile entry from content the user has not themselves reflected on — content merely relayed (e.g., an article, a video) requires the user's own added reflection before it may inform a Profile entry (`ADD §8.2`). |
 | FR-PROF-003 | The system shall never write a new version of a Profile entry without the owning user's explicit, informed acceptance of that specific proposed change. |
 | FR-PROF-004 | The user shall be able to request further refinement of a proposed change before accepting or rejecting it. |
 | FR-PROF-005 | The system shall support periodic, automatic re-evaluation of an existing Profile entry against updated outside/expert knowledge for its domain, on a user-configurable or default cadence, without requiring the user to re-initiate the conversation. |
 | FR-PROF-006 | The user shall be able to view every prior version of a Profile entry, not only the current one. |
 | FR-PROF-007 | The user shall be able to disable automatic re-evaluation (FR-PROF-005) per domain or entirely. |
-| FR-PROF-008 | A Profile refinement proposal that draws on an external knowledge lookup shall disclose to the model/provider only the minimum content necessary for that domain's comparison — never the user's full memory or Profile context (`ADD §8.2` step 5, `ADD ADR-015`). |
+| FR-PROF-008 | A Profile refinement proposal that draws on an external knowledge lookup shall disclose to the model/provider only the minimum content necessary for that domain's comparison — never the user's full memory or Profile context (`ADD ADR-015`, `ADD ADR-020`). |
 
 Profile requirements extend, rather than replace, the personal memory requirements in §3.3: a Profile entry is a synthesized view over governed memories, not an independent fact type, and remains subject to every applicable memory sensitivity and consent rule (§11.2).
+
+### 3.11 Brain 1 — the Persona (new — V03)
+
+| ID | Requirement |
+| --- | --- |
+| FR-B1-001 | The system shall maintain a structured Brain 1 Profile for each user with the sections defined in `ADD §6.1`; every field shall record its source, evidence, confidence, status and sensitivity tier. |
+| FR-B1-002 | Brain 1 shall start every user with a reviewed Base of expert knowledge (principle cards and the book library) so that a new user receives knowledgeable, not generic, replies. |
+| FR-B1-003 | Brain 1 shall learn from every conversation: facts are routed to the owning core; inferred facts remain hypotheses until the user confirms them. |
+| FR-B1-004 | Brain 1 shall keep conversation memory at three levels — recent turns verbatim, one summary per conversation (including the user's own quotes, commitments and open threads), and the profile. |
+| FR-B1-005 | Brain 1 shall compile a Context Pack for every reply containing only what matters for that moment, privacy-filtered, including hooks (profile × moment) and unknowns. |
+| FR-B1-006 | Brain 1 shall include live context (weather, time, season, school days, today's schedule) for the user's city; precise location only with opt-in. |
+| FR-B1-007 | The user shall be able to see what Brain 1 believes about them, with evidence, and correct, confirm or forget any item; a correction shall always win. |
+| FR-B1-008 | Brain 1 shall record which principles, personas and stances worked for the user, from the user's responses, and prefer them in future. |
+| FR-B1-009 | Brain 1 shall run a scheduled reflection that finds patterns across conversations and proposes them to the user for confirmation, never writing them as fact on its own. |
+| FR-B1-010 | Brain 1 shall measure how well it knows the user (coverage, confidence, prediction accuracy, correction rate). |
+| FR-B1-011 | A Safety Core shall evaluate every input first and shall be able to stop coaching entirely. |
+
+### 3.12 Brain 2 — the Voice (new — V03)
+
+| ID | Requirement |
+| --- | --- |
+| FR-B2-001 | Every reply shall be produced through Understand, Decide, Speak, Check and Remember steps; no reply shall reach the user without passing Check. |
+| FR-B2-002 | Replies shall be specific to the user and the moment, grounded only in the Context Pack and conversation; they shall never invent facts or numbers. |
+| FR-B2-003 | Replies shall be short conversational text — no headings or lists in chat, no talk about the user in the third person, no exposure of the system's internal reasoning, no repetition of earlier replies. |
+| FR-B2-004 | Brain 2 shall understand before advising, offer ideas only with permission, ask at most one question per reply, and answer the user's own question first. |
+| FR-B2-005 | When Brain 2 lacks a key fact, it shall ask one natural question rather than give generic advice. |
+| FR-B2-006 | Chat replies and profile proposals shall be separate; a profile proposal shall be offered only when something lasting was learned and shall require explicit acceptance. |
+| FR-B2-007 | Brain 2 may reach out proactively only when Brain 1 judges it helpful and within the user's check-in preferences; it shall never invent a message or a number on the user's behalf. |
+| FR-B2-008 | Each reply shall return metadata (persona used, principles used, question asked) so Brain 1 can learn from the outcome. |
+
+### 3.13 Personas (new — V03)
+
+| ID | Requirement |
+| --- | --- |
+| FR-PER-001 | Brain 2 shall speak through a persona composed of a voice (e.g. friend, big sister/brother, mother-like, father-like, grandparent-like, mentor, buddy, coach), an expertise (e.g. fitness coach, financial analyst, career mentor, parenting guide, mind & emotions guide) and a stance (listen, motivate, plan, teach, challenge, celebrate, mirror, ask). |
+| FR-PER-002 | Brain 1 shall pick the persona for every reply; the user shall be able to choose a voice explicitly, and the user's choice shall take precedence until changed. |
+| FR-PER-003 | A persona shall never impersonate the user's real people, and voices that could cause harm (e.g. a parent voice after a parent's death) shall be blocked. |
+| FR-PER-004 | Brain 2 shall always disclose that it is an AI when asked, in any persona. |
+| FR-PER-005 | Expert personas shall give general guidance only and recommend a qualified professional for specific financial, medical or legal decisions. |
+| FR-PER-006 | No persona shall use guilt, fear or emotional pressure to influence behaviour. |
+| FR-PER-007 | Safety Core decisions shall override every persona. |
 
 ## 4. Functional theory and behavioral interpretation
 
@@ -293,6 +344,21 @@ The requirements in §3.1–§3.9 describe a controlled personal-context system,
 6. On acceptance, the new version becomes the current Profile entry; the prior version remains visible in history (`FR-PROF-006`).
 7. On a regular cadence, the system may repeat steps 3–5 on its own for an existing entry, without new input from the user, unless the user has disabled this for that domain (`FR-PROF-005`, `FR-PROF-007`).
 
+### 5.7 An everyday turn (new — V03)
+
+1. The user writes (e.g. "Couldn't go to the gym, kids were sick again").
+2. Brain 1 checks safety, wakes the relevant cores (e.g. Body, Relationships, Mind), compiles a Context Pack and picks a persona (e.g. friend × fitness coach × listen → plan).
+3. Brain 2 understands the message, plans one or two moves, writes candidates in that voice, checks them, and sends the best.
+4. The reply is specific to her life ("Two sick kids in one week — that's a full house, not a commitment problem. Two minutes tonight, or a rest night?").
+5. Brain 1 records what happened and, from her next message, whether the approach helped.
+
+### 5.8 Choosing how Brain 2 talks (new — V03)
+
+1. The user says "Talk to me like my sister would."
+2. Brain 1 records the preferred voice; Brain 2 confirms in that voice.
+3. Later replies keep that voice while expertise and stance adapt to the topic.
+4. The user can change or clear the preference at any time (`FR-PER-002`).
+
 ## 6. Business rules
 
 | Rule | Definition |
@@ -310,7 +376,12 @@ The requirements in §3.1–§3.9 describe a controlled personal-context system,
 | BR-011 (new) | A model provider integration is not permitted without a contractual no-training, bounded-retention commitment (`ADD ADR-012`). |
 | BR-012 (new) | Content primarily describing a named third party is never attributed as that third party's own governed memory (`FR-SAFE-007`). |
 | BR-013 (new) | A Profile entry (§3.10) is superseded only by the owning user's explicit acceptance of a specific proposed version; automatic or inferred acceptance is not permitted. |
-| BR-014 (new) | A World Knowledge lookup (`ADD §8.2` step 5) discloses only the minimum content necessary for the domain comparison and is subject to the same no-training/bounded-retention contractual bar as a model provider (`ADD ADR-012`, `ADD ADR-015`). |
+| BR-014 (new) | A World Knowledge lookup (`ADD §8.2`, `ADD ADR-020`) discloses only the minimum content necessary for the domain comparison and is subject to the same no-training/bounded-retention contractual bar as a model provider (`ADD ADR-012`, `ADD ADR-015`). |
+| BR-015 (V03) | Neither Brain 1 nor Brain 2 may write durable personal context except through the memory write gate; inferred facets and area narratives require the user's explicit confirmation or acceptance. |
+| BR-016 (V03) | A reply that fails Brain 2's Check is never shown to the user. |
+| BR-017 (V03) | The user's explicit voice preference overrides Brain 1's persona choice; Safety overrides both. |
+| BR-018 (V03) | T3 information (health, finances) is used in a Context Pack only with per-category opt-in (`BR-005`). |
+| BR-019 (V03) | A persona never impersonates the user's real people and never claims to be human. |
 
 ## 7. Non-functional requirements
 
@@ -344,6 +415,10 @@ A target without a measurement method is not a real requirement — every NFR ab
 - Automated evaluation demonstrates that contradictory old memory does not override a fresh explicit user instruction.
 - Security tests demonstrate user A cannot retrieve user B's memory through API, vector search, or agent tooling.
 - A crisis-disclosure test conversation triggers the safety script and is excluded from ordinary memory write (`FR-SAFE-008`).
+- (V03) Every real bad Brain 2 output recorded in `Building_Brain2.md` §2 is rejected by the Check step.
+- (V03) The scenarios in `Building_Brain1.md` §15 and `Building_Brain2.md` Part III pass as automated tests.
+- (V03) A user can see their Brain 1 Profile with evidence, correct a fact, and see the correction used in the next reply.
+- (V03) A user can set a preferred voice and later replies use it.
 
 ### 8.1 Requirement priority and release classification
 
@@ -404,6 +479,9 @@ A functional spec without success criteria cannot be evaluated as a product. The
 | Unauthorized/duplicate agent actions | 0 tolerated | Blocks agent feature rollout until root-caused |
 | Privacy notice accuracy (`FR-PRV-009`) | 100% — no gap between claim and implementation | Immediate legal/DPO review, not a backlog item |
 | Profile writes without a recorded explicit acceptance event (`BR-013`) | 0 | Release-blocking; treated the same as an unauthorized agent action |
+| Replies shown that fail Brain 2 Check rules (`BR-016`) | 0 | Release-blocking |
+| Crisis red-team messages answered with coaching instead of care | 0 | Release-blocking; SEV2 |
+| Persona guardrail violations (impersonation, claiming to be human, regulated advice) (`BR-019`, `FR-PER-005`) | 0 | Release-blocking |
 
 Guardrails exist precisely because growth metrics create pressure to loosen exactly the controls this document spends most of its length defining. Any proposal to relax a guardrail requires CEO-level sign-off, not a product-manager-level decision.
 

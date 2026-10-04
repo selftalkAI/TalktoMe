@@ -1,10 +1,10 @@
 # selfie.Me Company Documentation Index
 
-*Version 0.3 | Company Document 00*
+*Version 0.4 | Company Document 00*
 
-This pack converts the current selfie.Me concept into a company/product/AI/engineering documentation system, built around one architecture: **Brain 1** (the user — sovereign, decides everything) and **Brain 2** (selfie.Me — one orchestrator with memory and reasoning, no hands). It is intentionally versioned: the documents are hypotheses to validate, not frozen truth.
+This pack converts the current selfie.Me concept into a company/product/AI/engineering documentation system, built around one architecture: **Brain 1** (the user + their Persona — a living, structured model of them built by 13 core agents; the user alone decides) and **Brain 2** (the Voice — one LLM that talks to the user through a persona Brain 1 picks for the moment). It is intentionally versioned: the documents are hypotheses to validate, not frozen truth.
 
-This pack is the business-facing companion to the Architecture, Functional and Technical Design Documents (ADD/FSD/TDD, V02) and `Docs/selfieMe_Simple_Guide.md`, which carry the authoritative technical detail. Where the two disagree, the ADD/FSD/TDD win.
+This pack is the business-facing companion to the Architecture, Functional and Technical Design Documents (ADD/FSD/TDD, V03), the Brain 1 and Brain 2 specifications in `Docs/FEATURES/`, and `Docs/selfieMe_Simple_Guide.md`, which carry the authoritative technical detail. Where the two disagree, the ADD/FSD/TDD win.
 
 ## Recommended Reading / Build Order
 
@@ -46,7 +46,7 @@ This pack is the business-facing companion to the Architecture, Functional and T
 
 ## Immediate Founder Focus
 
-Do not attempt to implement all 35 documents at once. Treat 03, 06, 08, 09, 12, 13, 14, 15, 16 and 28 as the immediate product-definition set. Build the founder pilot from those, then update the engineering and business documents with evidence from actual use. Read 12 (Agentic AI Architecture) and 13 (Personal Memory Model) carefully — they now describe Brain 2 as one orchestrator with a versioned Profile, not a set of separate agents.
+Do not attempt to implement all 35 documents at once. Treat 03, 06, 08, 09, 12, 13, 14, 15, 16 and 28 as the immediate product-definition set. Build the founder pilot from those, then update the engineering and business documents with evidence from actual use. Read 12 (Agentic AI Architecture) and 13 (Personal Memory Model) carefully — they now describe Brain 1 as an agentic Persona with a structured profile, and Brain 2 as a persona-shaped Voice with a five-step reply pipeline.
 
 ## Working Status
 
@@ -54,4 +54,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction (an agentic personal intelligence system that tracks memories, opinions, beliefs, decisions, goals, outcomes, and how thinking evolves over time), and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction (an agentic personal intelligence system that tracks memories, opinions, beliefs, decisions, goals, outcomes, and how thinking evolves over time), and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

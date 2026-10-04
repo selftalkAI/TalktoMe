@@ -14,7 +14,19 @@ Describe how a person experiences selfie.Me end to end.
 6. **Confirmation:** user accepts, edits or rejects the interpretation.
 7. **Future use:** advisor reasoning retrieves relevant history before new decisions.
 
-## Journey 2 — Profile Refinement
+## Journey 2 — An everyday conversation (V03)
+
+1. The user writes, e.g. "Couldn't go to the gym, kids were sick again."
+2. Brain 1 checks safety, wakes the relevant core agents (Body, Relationships, Mind), compiles a Context Pack of what matters now, and picks a persona — e.g. a friend with fitness know-how, listening first, then planning.
+3. Brain 2 replies once, briefly, about *her* life: "Two sick kids in one week — that's a full house, not a commitment problem. Two minutes tonight, or a rest night?"
+4. From her next message, Brain 1 learns whether that helped.
+
+## Journey 3 — Choosing how Brain 2 talks (V03)
+
+1. The user says "Talk to me like my sister would."
+2. Brain 2 switches to a big-sister voice and keeps it until the user changes it.
+
+## Journey 4 — Profile Refinement
 
 1. User shares input about a tracked domain, anywhere across their complete human persona (a skill, an emotion, a relationship, a habit, a learning area) — text, audio, video, or photo.
 2. Brain 2 checks whether the input carries the user's own reflection; if not, it asks a clarifying question first.
@@ -41,4 +53,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

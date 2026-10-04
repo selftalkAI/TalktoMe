@@ -10,7 +10,7 @@ Help people preserve and understand their inner self — memories, thoughts, exp
 
 ## Vision
 
-A future where a person can build a secure, evolving personal intelligence — their own "Brain 2" — that remembers their life, helps them understand how they change, grows specific parts of who they are (a skill, an emotional pattern, a way of learning), and can be preserved under their control.
+A future where a person can build a secure, evolving personal intelligence — their own second brain — that remembers their life, helps them understand how they change, grows specific parts of who they are (a skill, an emotional pattern, a way of learning), and can be preserved under their control.
 
 ## Mission
 
@@ -18,8 +18,8 @@ Build privacy-first agentic AI that captures life information, organizes it into
 
 ## Core Values
 
-- **Human First (Brain 1 is sovereign)** — Brain 1 is the user; Brain 2 (selfie.Me) serves them and never replaces their agency. It can notice, suggest, and wait — it cannot decide or act for them.
-- **Integrate & Enhance** — Brain 2's job is to pull the scattered pieces of Brain 1 — memories, beliefs, moments across the complete human persona (skill, emotion, relationships, career, learning, habits, and every other part of a life) — into one coherent, standing Profile (integrate), and to help Brain 1 grow by comparing that Profile against outside expertise, proposing a refinement, and following through with ongoing support once it is accepted — nudges, reminders, check-ins — so the change actually takes hold in Brain 1's life, not just in the Profile's data (enhance). It does either only by proposing, never by taking over.
+- **Human First (the human is sovereign)** — Brain 1 is the user plus their Persona (the model selfie.Me keeps of them); the human alone decides. Brain 2 is the voice that serves them and never replaces their agency. It can notice, suggest, and wait — it cannot decide or act for them.
+- **Integrate & Enhance** — Brain 1's Persona pulls the scattered pieces of Brain 1 — memories, beliefs, moments across the complete human persona (skill, emotion, relationships, career, learning, habits, and every other part of a life) — into one coherent, structured Profile (integrate); Brain 2 helps the person grow by comparing that Profile against outside expertise, proposing a refinement, and following through with ongoing support once it is accepted — nudges, reminders, check-ins — so the change actually takes hold in Brain 1's life, not just in the Profile's data (enhance). It does either only by proposing, never by taking over.
 - **Privacy by Design** — Personal memory and identity belong to the user.
 - **Authenticity** — Historical statements and AI inference must remain distinguishable.
 - **User Control** — Users control access, correction, export, deletion, and future permissions.
@@ -37,4 +37,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

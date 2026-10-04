@@ -1,40 +1,40 @@
 # Engineering Roadmap
 
-*Version 0.3 | Company Document 30*
+*Version 0.4 | Company Document 30*
 
-Sequence technical delivery.
+Sequence technical delivery. Detailed phases: `Building_Brain1.md` §18 and `Building_Brain2.md` §15.
 
-## Milestone 1
+## Milestone 1 — Foundations (done)
 
-Repo, environments, auth, schema, source capture.
+Services, SQLite + Chroma storage, profiles and auth, memory write gate, book library ingested, model gateway (Ollama / Bedrock).
 
-## Milestone 2
+## Milestone 2 — Brain 2 quality floor
 
-Voice transcription, object storage, memory extraction.
+Check step, regression set, five-step pipeline, chat vs profile proposal split.
 
-## Milestone 3
+## Milestone 3 — Brain 1 Profile
 
-Embeddings, pgvector search, provenance.
+12-section profile with evidence and versions, three-level conversation memory, Context Pack compiler with privacy filter.
 
-## Milestone 4
+## Milestone 4 — Brain 1 agents
 
-Belief/version model and evolution workflow.
+Agent engine (bounded loops, tools, run traces), Safety Core, Router, MVP cores, Here & Now.
 
-## Milestone 5
+## Milestone 5 — Knowledge
 
-Orchestrator wiring (one model, many jobs — `12_Agentic AI Architecture`), reflection and feedback loop, Profile Store with propose/accept/refine/reject, a basic follow-through notification path for accepted refinements, and a Scheduler job type for recurring re-checks.
+Principle-card distillation from the book library, founder review, similarity-only book retrieval.
 
-## Milestone 6
+## Milestone 6 — Personas
 
-Advisor retrieval and decision model, plus the World Knowledge Gateway (provider-abstracted outside-knowledge lookup, zero-retention contract required before integration).
+Persona Selector, voice and expertise configs, guardrails, voice preference.
 
-## Milestone 7
+## Milestone 7 — Learning
 
-Security hardening, export/delete, audit, observability.
+Outcome scoring, learned strategies, nightly Reflector, proactive check-ins, Brain Strength.
 
-## Milestone 8
+## Milestone 8 — Mirror and hardening
 
-Founder pilot measurement and model evaluation.
+Mirror view (see / correct / forget), observability page, safety red-team, export/delete, founder pilot measurement.
 
 ## Working Status
 
@@ -42,4 +42,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

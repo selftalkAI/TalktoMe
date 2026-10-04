@@ -1,39 +1,30 @@
 # MVP Scope
 
-*Version 0.4 | Company Document 28*
+*Version 0.5 | Company Document 28*
 
 Freeze the first build boundary.
 
-## Reference Use Case: One-Hour Gym
+## Reference Use Case: One-Hour Gym — with a Brain that knows her
 
-The MVP is not built around an abstract domain list — it is built, end to end, around one complete, concrete story, and every other domain follows the same shape once this one works:
+The MVP is built end to end around one concrete story, and every other area follows the same shape once it works:
 
-1. Brain 1 states an intention in their own words: "I want to gym for one hour a day." Explicit and self-authored, so it's trackable immediately — no reflection-check needed for a person's own stated goal.
-2. Brain 1 checks in daily with what actually happened (0 min, 20 min, 60 min...).
-3. Brain 2 deterministically detects a real shortfall — three or more consecutive days under target, never a single bad day — and only then does anything at all.
-4. Brain 2 offers support: notices the pattern, asks what got in the way, and — only as a question, never a command — floats a smaller target. It never decides or acts for Brain 1.
-5. Brain 1 responds in their own words. That response is what makes the moment eligible to become a memory at all.
-6. Brain 2 drafts a Profile proposal — the "brain strength" story: the struggle, the support offered, what Brain 1 actually said — and presents it. This is a disclosure, not a write.
-7. Brain 1 accepts it (or asks for a refinement, or rejects it). Only on accept does anything become durable.
-8. If Brain 1 also adjusts the target, the old intention is superseded, never mutated — the original target and the fact it didn't work stay visible in history, alongside every version of the Profile entry, accepted or not.
+1. A 40-year-old mother of two says she wants to go to the gym an hour a day but has no motivation.
+2. Brain 1 already knows — or asks, one natural question at a time — her schedule, her kids, her places, what she loves, and her own reason ("to feel like me, not just mom").
+3. Brain 2, as a friend with fitness-coach know-how, shrinks the goal to fit her real life, lets her choose, and plans for misses.
+4. She checks in; setbacks get understanding and a smaller next step, progress gets real (not hollow) celebration, silence gets a gentle, well-timed check-in.
+5. Replies use her life and the moment — a rainy morning and black coffee, a snow day with the kids — and every reply passes a quality check.
+6. Brain 1 learns what works for her and, over weeks, shows her patterns back to her for confirmation.
 
-This is built and running today: `orchestration-service/app/brain2/` (`profile_store.py`, `intentions_repo.py`, `orchestrator.py`), two new model modes in `agentic-service` (`brain2_support_message`, `brain2_profile_narrative`), nine endpoints under `/api/v1/brain2/*`, and a runnable proof at `orchestration-service/scripts/demo_brain2_gym_story.py`.
+## Build Now (in this order)
 
-## Build Now
-
-- Private account.
-- Voice/text capture.
-- Transcription.
-- Memory extraction.
-- Search.
-- Belief/evolution timeline.
-- Evidence-backed reflections.
-- Advisor query using personal history.
-- Feedback/correction.
-- Export/delete.
-- Basic agent activity log.
-- The One-Hour Gym reference use case above, fully working end to end (done — see above), then the same mechanism extended to a second domain (an emotion, a relationship, a learning area) to prove it generalizes, with propose/accept/refine/reject and basic follow-through support throughout.
-- A UI for the reference use case — deliberately not designed yet (two prior guesses at "what does mirror look like" were both wrong); do not build one without an explicit, checked-in decision on interaction shape first.
+1. Brain 2 Check step + regression set of real bad outputs (stop bad replies first).
+2. Brain 2 five-step pipeline (Understand, Decide, Speak, Check, Remember); chat reply separated from profile proposals.
+3. Brain 1 Profile (12 sections + Here & Now), Context Pack compiler, conversation memory.
+4. Brain 1 MVP cores: Safety, Body, Relationships, Mind, Behaviour, Identity, Lifestyle, Here & Now.
+5. Knowledge base: principle cards from the book library, reviewed by the founder.
+6. Personas: first voices (friend, coach, big sister, mother-like) and expertise (fitness, mind & emotions).
+7. Learning loop, Reflector, proactive check-ins.
+8. Mirror view: see, correct, forget.
 
 ## Do Not Build Yet
 
@@ -55,4 +46,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).

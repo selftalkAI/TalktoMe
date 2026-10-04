@@ -1,20 +1,24 @@
 # System Architecture
 
-*Version 0.3 | Company Document 17*
+*Version 0.4 | Company Document 17*
 
 Define major technical components and interactions.
 
 ## Architecture
 
-Mobile/Web -> API Gateway/BFF -> Identity -> Capture Service -> Event/Workflow Orchestrator (Brain 2 — one orchestrating model, many jobs; see `12_Agentic AI Architecture`) -> Memory / Belief / Decision / Profile Stores -> World Knowledge Gateway -> Scheduler -> PostgreSQL/pgvector + Object Storage -> Retrieval/Reranking -> LLM/ML Services -> Reflection/Advisor UI.
+Web/Mobile → Orchestration Service (API, data layer, Brain 1 orchestration, Brain 2 turn pipeline) → Agentic Service (Brain 1 core agents and sub-agents, Brain 2 steps, model gateway) → Memory / Profile / Knowledge stores → LLM providers.
 
 ## Pattern
 
-Start as a modular monolith plus background workers. Separate services only where scale, security isolation or model workloads justify it. The "services" above are code and ownership boundaries, not separate AI agents — the reasoning itself is one orchestrator that holds no state of its own between turns; all durable state lives in the Stores.
+A modular monolith plus background workers (Reflector, proactive check-ins). Logical components are code and ownership boundaries, not separate deployments.
 
-## Event Flow
+## Turn Flow
 
-CaptureReceived -> SourceStored -> MemoryExtracted -> RelatedHistoryRetrieved -> EvolutionEvaluated -> PersonalGraphUpdated -> ReflectionCandidateCreated -> ProfileProposalCreated -> UserFeedbackRecorded -> FollowThroughScheduled (on acceptance only).
+MessageReceived → SafetyChecked → CoresRouted → AreasInvestigated → ContextPackCompiled → PersonaSelected → Understood → Planned → Spoken → Checked → ReplySent → TurnRemembered → OutcomeScored.
+
+## Storage
+
+Target: PostgreSQL/pgvector + object storage. Today: SQLite + Chroma (see `TDD §34`).
 
 ## Working Status
 
@@ -22,4 +26,4 @@ This is a working document. It should evolve through founder usage, user researc
 
 ## Basis
 
-Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Two Brains / Profile implementation plan formalized in the Architecture, Functional and Technical Design Documents (V02).
+Grounded in the selfie.Me Strategic Framework and Business Model Canvas, the founder's clarified direction, and the Brain 1 / Brain 2 design in `Docs/FEATURES/Building_Brain1.md` and `Docs/FEATURES/Building_Brain2.md`, formalized in the Architecture, Functional and Technical Design Documents (V03).
