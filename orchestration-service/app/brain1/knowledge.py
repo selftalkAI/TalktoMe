@@ -27,8 +27,22 @@ def cards() -> tuple[dict[str, Any], ...]:
     for path in sorted(KNOWLEDGE_DIR.glob('*.yaml')):
         data = yaml.safe_load(path.read_text()) or {}
         for card in data.get('cards') or []:
-            loaded.append({**card, 'core': data.get('core')})
+            loaded.append({**card, 'core': data.get('core'),
+                           'use_when': _as_text_lists(card.get('use_when')), 'avoid_when': _as_text_lists(card.get('avoid_when'))})
     return tuple(loaded)
+
+
+def _as_text_lists(conditions: dict[str, Any] | None) -> dict[str, Any]:
+    """YAML reads bare words like off / no / yes as booleans; conditions are
+    always words, so list items are forced back to lowercase text.
+    (`did_it_today` is the one real boolean and is kept as is.)"""
+    out: dict[str, Any] = {}
+    for key, value in (conditions or {}).items():
+        if isinstance(value, list):
+            out[key] = [str(v).lower() if not isinstance(v, bool) else ('off' if v is False else 'on') for v in value]
+        else:
+            out[key] = value
+    return out
 
 
 def select(

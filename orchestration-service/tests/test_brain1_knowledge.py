@@ -61,3 +61,17 @@ def test_at_most_two_cards() -> None:
 def test_card_text_cites_the_book_without_ids() -> None:
     text = knowledge.as_text([c for c in CARDS if c['id'] == 'AH-two-minute-rule'])
     assert '(Atomic Habits)' in text and 'AH-two-minute-rule' not in text
+
+
+@pytest.mark.parametrize('card', CARDS, ids=lambda c: c['id'])
+def test_every_condition_is_text(card: dict) -> None:
+    """YAML turns bare off/no/yes into booleans — that crashed a live turn once."""
+    for conditions in (card['use_when'], card.get('avoid_when') or {}):
+        for key, value in conditions.items():
+            if isinstance(value, list):
+                assert all(isinstance(v, str) for v in value), (card['id'], key, value)
+
+
+def test_selection_survives_every_feeling_and_word() -> None:
+    reading = {'intent': 'venting', 'feeling': 'feeling off and stressed', 'change_talk': 'none', 'did_it_today': False}
+    knowledge.select(reading, 'no yes on off always should kids', 'general')  # must not raise

@@ -40,7 +40,7 @@ cards:
   - id: EI-name-the-feeling
     source: {book: Emotional Intelligence, chapter: "4 Know Thyself"}
     principle: Recognizing a feeling as it happens is the keystone of managing it.
-    use_when: {intents: [venting], feelings: [unknown, confused, off, weird, stressed]}
+    use_when: {intents: [venting], feelings: [unknown, confused, "off", weird, stressed]}
     offer: Help them put a name to what they're feeling, as a gentle guess they can correct.
     review: draft
   - id: EI-hijacking
