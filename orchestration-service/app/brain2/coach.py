@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from .. import profiles_repo
-from ..brain1 import context_pack, persona_selector, runs, safety
+from ..brain1 import context_pack, core_engine, knowledge, persona_selector, runs, safety
 from ..config import settings
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
 from . import plan_rules
@@ -20,7 +20,7 @@ from .checks import check_reply
 
 # When Safety says `concern`, Brain 2 only knows who they are and what today is like —
 # nothing about goals, progress or struggles it could steer the conversation toward.
-_WITHHELD_ON_CONCERN = ('goal', 'loves', 'story', 'hooks', 'works', 'unknowns')
+_WITHHELD_ON_CONCERN = ('goal', 'loves', 'story', 'understanding', 'hooks', 'works', 'unknowns')
 
 MIN_JUDGE_TOTAL = 10  # of 20: below this, a rule-passing draft still isn't good enough to send
 
@@ -63,7 +63,7 @@ def reply(
         first_name = ((person.get('full_name') or '').split() or ['there'])[0]
         result = {'content': safety.care_message(first_name, person.get('location')), 'verdict': None, 'fallback': False,
                   'reading': {}, 'plan': {'stance': 'care', 'moves': ['care'], 'words': ''},
-                  'persona': {'voice': 'care', 'expertise': 'safety', 'source': 'safety'}, 'attempts': 0, 'failures': []}
+                  'persona': {'voice': 'care', 'expertise': 'safety', 'source': 'safety'}, 'cards': [], 'attempts': 0, 'failures': []}
         return _finish(profile_email, trigger, level, result, started)
 
     pack = context_pack.compile(
@@ -79,6 +79,11 @@ def reply(
         turn.public_pack = {k: ('' if k in _WITHHELD_ON_CONCERN else v) for k, v in turn.public_pack.items()}
         plan = plan_rules.concern_plan()
     else:
+        if trigger == 'message' and settings.brain1_cores_mode == 'reactive':
+            core_engine.run_cores(profile_email, domain, latest_message, reading)
+        turn.public_pack['understanding'] = _understanding(profile_email)
+        turn.cards = knowledge.select(reading, latest_message, domain, level) if trigger == 'message' else []
+        turn.public_pack['principles'] = knowledge.as_text(turn.cards)
         decided = turn.decide(reading) if trigger == 'message' else {}
         plan = plan_rules.apply(decided, reading, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level)
     if persona_selector.detect_request(latest_message) not in (None, 'clear'):
@@ -91,18 +96,28 @@ def reply(
     if best is None and turn.speak_available:
         best = turn.best_of(plan, 1, feedback=turn.rewrite_feedback())
 
-    trace = {'reading': reading, 'plan': plan, 'persona': turn.persona, 'attempts': turn.attempts, 'failures': turn.failures}
+    trace = {'reading': reading, 'plan': plan, 'persona': turn.persona, 'cards': [c['id'] for c in turn.cards],
+             'attempts': turn.attempts, 'failures': turn.failures}
     if best is not None:
         result = {'content': best['content'], 'verdict': best['verdict'], 'fallback': False, **trace}
     else:
         result = {'content': fallback_reply(pack['first_name'], trigger, turn.previous), 'verdict': None, 'fallback': True, **trace}
+    if trigger == 'message' and level == safety.OK and settings.brain1_cores_mode == 'background':
+        core_engine.run_in_background(profile_email, domain, latest_message, reading)
     return _finish(profile_email, trigger, level, result, started)
+
+
+def _understanding(profile_email: str) -> str:
+    """What Brain 1's core agents currently understand, one line per area."""
+    if settings.brain1_cores_mode == 'off':
+        return ''
+    return '\n'.join(f"- {s['core'].title()}: {s['summary']}" for s in core_engine.latest_summaries(profile_email))
 
 
 def _finish(profile_email: str, trigger: str, level: str, result: dict[str, Any], started: float) -> dict[str, Any]:
     """Adds the safety level and records the turn's trace (no message or reply text)."""
     result['safety'] = level
-    trace = {k: result.get(k) for k in ('reading', 'plan', 'persona', 'verdict', 'attempts', 'failures', 'fallback')}
+    trace = {k: result.get(k) for k in ('reading', 'plan', 'persona', 'cards', 'verdict', 'attempts', 'failures', 'fallback')}
     try:
         result['run_id'] = runs.record(profile_email, trigger, level, trace, int((time.monotonic() - started) * 1000))
     except Exception:  # noqa: BLE001 - tracing must never cost the person their reply
@@ -121,11 +136,14 @@ class _Turn:
         self.previous = [t['content'] for t in conversation if t.get('role') == 'assistant']
         self.allowed_text = '\n'.join([pack['allowed_text'], latest_message, *(t.get('content', '') for t in conversation)])
         self.public_pack = {k: v for k, v in pack.items() if k not in ('allowed_text', 'blocked_terms')}
+        self.public_pack.setdefault('principles', '')
+        self.public_pack.setdefault('understanding', '')
         self.attempts = 0
         self.failures: list[str] = []
         self.speak_available = True
         self.persona: dict[str, str] = {'voice': persona_selector.DEFAULT_VOICE, 'expertise': 'general', 'source': 'default'}
-        self.examples: list[str] = []  # the prompt's example replies, so a copied example is caught
+        self.examples: list[str] = []
+        self.cards: list[dict[str, Any]] = []  # the prompt's example replies, so a copied example is caught
 
     # --- Understand / Decide --------------------------------------------------
 

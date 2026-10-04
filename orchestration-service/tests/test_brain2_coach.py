@@ -70,6 +70,7 @@ def stub_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(coach.context_pack, 'compile', lambda *a, **k: dict(PACK))
     monkeypatch.setattr(coach.settings, 'brain2_speak_candidates', 2)
     monkeypatch.setattr(coach.runs, 'record', lambda *a, **k: 'run-1')
+    monkeypatch.setattr(coach.settings, 'brain1_cores_mode', 'off')
     monkeypatch.setattr(
         coach.persona_selector, 'select', lambda *a, **k: {'voice': 'friend', 'expertise': 'general', 'source': 'selected'}
     )
@@ -224,3 +225,14 @@ def test_every_turn_is_traced(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result['run_id'] == 'run-9'
     trace = recorded[0][3]
     assert 'Kids were sick.' not in str(trace) and result['content'] not in str(trace)  # no message or reply text
+
+
+def test_core_understanding_reaches_speak(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(coach.settings, 'brain1_cores_mode', 'background')
+    monkeypatch.setattr(coach.core_engine, 'latest_summaries', lambda e: [{'core': 'body', 'summary': 'Missed due to caregiving, not motivation.'}])
+    started: list[tuple] = []
+    monkeypatch.setattr(coach.core_engine, 'run_in_background', lambda *a: started.append(a))
+    fake = _install(monkeypatch, FakeAgentic(['Two sick kids is a lot. Rest night?', 'How are the kids?']))
+    coach.reply('sam@example.com', 'fitness', 'Kids sick again.')
+    assert 'Body: Missed due to caregiving' in fake.payloads('broca')[0]['context_pack']['understanding']
+    assert started and started[0][2] == 'Kids sick again.'  # cores update after the reply, for the next one

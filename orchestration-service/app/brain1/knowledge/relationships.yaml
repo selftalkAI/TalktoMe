@@ -1,0 +1,20 @@
+core: relationships
+cards:
+  - id: NVC-observe
+    source: {book: Nonviolent Communication, chapter: "3 Observing Without Evaluating"}
+    principle: Describing what someone did, without judging it, opens conversations that judgments close.
+    use_when: {words: [husband, wife, partner, boss, manager, mother, father, friend, he always, she always, they always]}
+    offer: Help separate what actually happened from the judgment about it.
+    review: draft
+  - id: NVC-feelings-needs
+    source: {book: Nonviolent Communication, chapter: "5 Taking Responsibility for Our Feelings"}
+    principle: Feelings point to needs; naming the need shows a way forward.
+    use_when: {intents: [venting], words: [annoyed, hurt, ignored, unappreciated, nobody helps, alone in this]}
+    offer: Reflect the feeling and guess at the need underneath it.
+    review: draft
+  - id: NVC-request
+    source: {book: Nonviolent Communication, chapter: "6 Requesting That Which Would Enrich Life"}
+    principle: A clear, doable request in positive language works better than a demand or a hint.
+    use_when: {words: [help, ask him, ask her, ask them, nobody helps, do it all]}
+    offer: Help them shape one specific, doable request they could make of someone.
+    review: draft

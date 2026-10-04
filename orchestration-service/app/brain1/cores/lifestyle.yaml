@@ -1,0 +1,12 @@
+id: lifestyle
+name: Lifestyle
+goal: Understand what their days actually look like — rhythm, free windows, places, and the small things they love.
+sections: [life_map, tastes]
+sub_agents:
+  - {id: daily_rhythm, lens: busy hours and free windows}
+  - {id: places, lens: home, work, gym, routes}
+  - {id: tastes, lens: things they love and their rituals}
+routes:
+  domains: [home, schedule, routine, cooking, food, travel]
+  words: [morning, evening, night, weekend, weekday, schedule, busy, time, coffee, home, work, commute]
+  intents: []

@@ -38,6 +38,11 @@ class Settings:
         # via Open-Meteo. Only the city name leaves the system; turn off to keep everything local.
         self.here_now_weather_enabled: bool = os.getenv('HERE_NOW_WEATHER_ENABLED', 'true').lower() == 'true'
         self.here_now_timeout_seconds: float = float(os.getenv('HERE_NOW_TIMEOUT_SECONDS', '3'))
+        # Brain 1 core agents (Building_Brain1.md §10): 'reactive' runs them before every reply
+        # (best understanding, slowest), 'background' runs them right after the reply so the NEXT
+        # reply benefits (default on a local model), 'off' disables them.
+        self.brain1_cores_mode: str = os.getenv('BRAIN1_CORES_MODE', 'background').strip().lower()
+        self.brain1_core_max_steps: int = max(1, int(os.getenv('BRAIN1_CORE_MAX_STEPS', '3')))
 
 
 settings = Settings()

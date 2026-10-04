@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS brain1_runs (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_brain1_runs_profile ON brain1_runs(profile_email, created_at);
+-- What each core agent currently understands about its area of the person's life
+-- (Building_Brain1.md §7): the latest one per core feeds the Context Pack.
+CREATE TABLE IF NOT EXISTS brain1_area_summaries (
+    summary_id TEXT PRIMARY KEY,
+    profile_email TEXT NOT NULL,
+    core TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    steps_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brain1_area_summaries ON brain1_area_summaries(profile_email, core, created_at);
 """
 
 

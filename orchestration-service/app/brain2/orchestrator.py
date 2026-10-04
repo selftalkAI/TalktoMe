@@ -163,6 +163,7 @@ def converse(
         'safety': result['safety'],
         'run_id': result.get('run_id'),
         'persona': result['persona'],
+        'cards': result.get('cards', []),
         'reading': result['reading'],
         'plan': result['plan'],
         'verdict': result['verdict'],

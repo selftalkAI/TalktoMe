@@ -1,0 +1,16 @@
+core: meaning
+cards:
+  - id: FR-three-ways
+    source: {book: "Man's Search for Meaning", chapter: "Logotherapy in a Nutshell"}
+    principle: Meaning is found by creating or doing something, by loving or experiencing someone or something, and by the attitude taken toward unavoidable suffering.
+    use_when: {words: [point, meaning, purpose, why bother, what for, matters]}
+    offer: Ask what or who this is really for in their life.
+    avoid_when: {safety: [concern, crisis]}
+    review: draft
+  - id: FR-choose-attitude
+    source: {book: "Man's Search for Meaning", chapter: "Experiences in a Concentration Camp"}
+    principle: When circumstances can't change, the freedom to choose one's attitude remains.
+    use_when: {words: [stuck with, no choice, out of my control, nothing I can do]}
+    offer: Acknowledge what they can't change, then ask what is still theirs to choose.
+    avoid_when: {safety: [concern, crisis], feelings: [grieving, grief]}
+    review: draft

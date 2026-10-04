@@ -1,0 +1,12 @@
+id: mind
+name: Mind
+goal: Understand how they are thinking and feeling right now — mood, stress, self-talk — without diagnosing.
+sections: [inner_world]
+sub_agents:
+  - {id: emotion, lens: mood and its intensity}
+  - {id: stress, lens: stress load and recovery}
+  - {id: self_talk, lens: thinking traps like all-or-nothing or labels}
+routes:
+  domains: [emotion, emotions, feelings, stress, mood, mental]
+  words: [always, never, again, guilty, stressed, anxious, overwhelmed, sad, frustrated, hate, failure, should]
+  intents: [venting, setback]

@@ -1,0 +1,63 @@
+core: mind
+cards:
+  - id: FG-all-or-nothing
+    source: {book: Feeling Good (summary edition), chapter: "3 How to Diagnose Your Moods"}
+    principle: All-or-nothing thinking turns one miss into "I always fail".
+    use_when: {words: [always, never, again, every time, ruined, fail, failure, failed, useless]}
+    offer: Gently notice the all-or-nothing word and set the real record next to it.
+    avoid_when: {safety: [concern, crisis]}
+    review: draft
+  - id: FG-labeling
+    source: {book: Feeling Good (summary edition), chapter: "4 Start by Building Self-Esteem"}
+    principle: Labeling yourself ("I'm lazy") replaces a fixable behaviour with a fixed identity.
+    use_when: {words: [lazy, loser, hopeless case, "i'm bad", pathetic, weak]}
+    offer: Separate what happened from who they are — talk about the specific day, not the label.
+    review: draft
+  - id: FG-should-statements
+    source: {book: Feeling Good (summary edition), chapter: "3 How to Diagnose Your Moods"}
+    principle: '"Should" statements create guilt rather than motivation.'
+    use_when: {words: [should, "shouldn't", must, have to, supposed to]}
+    offer: Reflect the pressure in their "should" and ask what they actually want here.
+    review: draft
+  - id: SC-self-kindness
+    source: {book: Self-Compassion (summary edition), chapter: "1 What Is Self-Compassion?"}
+    principle: Self-kindness, common humanity and mindfulness steady people better than self-criticism.
+    use_when: {feelings: [guilty, guilt, ashamed, disappointed, frustrated], words: [my fault, hate myself, so stupid]}
+    offer: Respond the way a good friend would to them — warmth first, and remind them they're not alone in this.
+    review: draft
+  - id: SC-caregivers
+    source: {book: Self-Compassion (summary edition), chapter: "19 Self-Compassion for Caregivers"}
+    principle: People who care for others need to care for themselves too; it is not selfish.
+    use_when: {words: [kids, children, baby, mom, mum, parent, caring for, everyone else, holding everything]}
+    offer: Acknowledge how much they carry for others, and that their own needs count.
+    review: draft
+  - id: SC-compassionate-motivation
+    source: {book: Self-Compassion (summary edition), chapter: "11 Self-Compassionate Motivation"}
+    principle: Kindness after a setback motivates trying again better than harshness does.
+    use_when: {intents: [setback], feelings: [guilty, disappointed, frustrated, angry]}
+    offer: Be kind about the miss first; then look at the next step.
+    review: draft
+  - id: EI-name-the-feeling
+    source: {book: Emotional Intelligence, chapter: "4 Know Thyself"}
+    principle: Recognizing a feeling as it happens is the keystone of managing it.
+    use_when: {intents: [venting], feelings: [unknown, confused, off, weird, stressed]}
+    offer: Help them put a name to what they're feeling, as a gentle guess they can correct.
+    review: draft
+  - id: EI-hijacking
+    source: {book: Emotional Intelligence, chapter: "2 Anatomy of an Emotional Hijacking"}
+    principle: Strong emotions can take over before thinking catches up; a pause lets reason back in.
+    use_when: {feelings: [angry, furious, panicked, overwhelmed], words: [snapped, yelled, lost it]}
+    offer: Normalize the reaction, and suggest a short pause before deciding anything.
+    review: draft
+  - id: DW-meaning-of-failure
+    source: {book: Mindset, chapter: "2 Inside the Mindsets"}
+    principle: In a growth mindset, a setback is information about what to try next, not a verdict on ability.
+    use_when: {intents: [setback], words: ["not good at", "can't do", "not cut out", talent, natural]}
+    offer: Treat the setback as information — what did it show about what to adjust?
+    review: draft
+  - id: DW-praise-process
+    source: {book: Mindset, chapter: "3 The Truth About Ability and Accomplishment"}
+    principle: Praising effort and strategy builds resilience; praising talent makes people fear failing.
+    use_when: {intents: [progress]}
+    offer: Praise how they did it — the effort or strategy — never "you're so talented".
+    review: draft

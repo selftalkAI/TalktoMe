@@ -1,0 +1,87 @@
+core: behaviour
+cards:
+  - id: AH-never-miss-twice
+    source: {book: Atomic Habits, chapter: "16 How to Stick with Good Habits Every Day"}
+    principle: Missing once is an accident; missing twice is the start of a new habit.
+    use_when: {intents: [setback], did_it_today: false}
+    offer: Treat the miss as normal, and make the very next session so easy it is hard to skip.
+    avoid_when: {reason_words: [sick, ill, injured, injury, hurt, flu, fever]}
+    review: draft
+  - id: AH-two-minute-rule
+    source: {book: Atomic Habits, chapter: "13 How to Stop Procrastinating by Using the Two-Minute Rule"}
+    principle: Scale a habit down until it can be started in two minutes; showing up comes before doing more.
+    use_when: {intents: [setback, venting], change_talk: [sustain, desire], words: [motivation, "can't", hard, tired, busy, time]}
+    offer: Offer a tiny version of the habit as an option — something they could start in two minutes today.
+    review: draft
+  - id: AH-implementation-intention
+    source: {book: Atomic Habits, chapter: "5 The Best Way to Start a New Habit"}
+    principle: People who decide exactly when and where they will act are far more likely to follow through.
+    use_when: {change_talk: [commitment, activation, desire], intents: [asking]}
+    offer: Help them name one specific time and place for it — "I will … at … in …" — in their words.
+    review: draft
+  - id: AH-habit-stacking
+    source: {book: Atomic Habits, chapter: "5 The Best Way to Start a New Habit"}
+    principle: Pair a new habit with one they already do every day — "after I …, I will …".
+    use_when: {change_talk: [activation, commitment], words: [remember, forget, routine, morning, evening]}
+    offer: Suggest attaching it to something they already do daily, as an option.
+    review: draft
+  - id: AH-identity-votes
+    source: {book: Atomic Habits, chapter: "2 How Your Habits Shape Your Identity (and Vice Versa)"}
+    principle: Every action is a vote for the type of person you want to become.
+    use_when: {intents: [progress], change_talk: [taking_steps, commitment]}
+    offer: Link what they did to who they are becoming, in their own terms — not to the number.
+    review: draft
+  - id: AH-environment-design
+    source: {book: Atomic Habits, chapter: "6 Motivation Is Overrated; Environment Often Matters More"}
+    principle: Make the cue for a good habit obvious and the friction low; environment beats willpower.
+    use_when: {words: [forget, motivation, willpower, lazy, distracted, phone]}
+    offer: Offer one small change to their surroundings that makes starting easier.
+    review: draft
+  - id: AH-make-it-satisfying
+    source: {book: Atomic Habits, chapter: "15 The Cardinal Rule of Behavior Change"}
+    principle: What is immediately rewarded is repeated.
+    use_when: {intents: [progress]}
+    offer: Help them notice how it felt right after — the immediate win, not the distant goal.
+    review: draft
+  - id: AH-goldilocks
+    source: {book: Atomic Habits, chapter: "19 The Goldilocks Rule: How to Stay Motivated in Life and Work"}
+    principle: Motivation peaks when a task is just at the edge of current ability — not too easy, not too hard.
+    use_when: {words: [boring, bored, too easy, too hard, overwhelming, plateau]}
+    offer: Ask whether it feels too easy or too hard right now, and adjust one notch.
+    review: draft
+  - id: KAH-planning-fallacy
+    source: {book: Thinking, Fast and Slow, chapter: "23 The Outside View"}
+    principle: People consistently underestimate how long and hard plans will be; the outside view corrects it.
+    use_when: {change_talk: [desire], intents: [sharing], words: [every day, hour, always, never miss, all]}
+    offer: Gently test the plan against real life — what usually happens to plans like this on a busy week?
+    review: draft
+  - id: MI-evoke-own-reasons
+    source: {book: Motivational Interviewing (3rd ed.), chapter: "13 Evoking the Person's Own Motivation"}
+    principle: People are persuaded most by reasons they voice themselves.
+    use_when: {change_talk: [desire, sustain, none], intents: [sharing, venting]}
+    offer: Ask what it would give them, or what made them want it — and let their answer lead.
+    review: draft
+  - id: MI-rulers
+    source: {book: Motivational Interviewing (3rd ed.), chapter: "13 Evoking the Person's Own Motivation"}
+    principle: Asking "how important, 0–10?" then "why not a lower number?" draws out a person's own reasons.
+    use_when: {change_talk: [sustain, desire], words: [not sure, maybe, "don't know", torn]}
+    offer: Ask how important it feels from 0 to 10, then why it isn't lower.
+    review: draft
+  - id: MI-sustain-talk
+    source: {book: Motivational Interviewing (3rd ed.), chapter: "15 Responding to Sustain Talk and Discord"}
+    principle: Arguing for change makes people argue back; reflecting their side lowers resistance.
+    use_when: {change_talk: [sustain, discord], intents: [pushback]}
+    offer: Reflect their side fairly and don't defend the plan; ask what would feel worth it to them.
+    review: draft
+  - id: MI-exchanging-information
+    source: {book: Motivational Interviewing (3rd ed.), chapter: "11 Exchanging Information"}
+    principle: Elicit what they already know, offer one piece with permission, then ask what they make of it.
+    use_when: {intents: [asking]}
+    offer: Keep advice short and concrete; leave room for what they think of it.
+    review: draft
+  - id: MI-affirm
+    source: {book: Motivational Interviewing (3rd ed.), chapter: "6 Core Interviewing Skills: OARS"}
+    principle: An affirmation names a specific, real strength or effort — not generic praise.
+    use_when: {intents: [progress], change_talk: [taking_steps, ability]}
+    offer: Name the specific effort you can see, plainly.
+    review: draft

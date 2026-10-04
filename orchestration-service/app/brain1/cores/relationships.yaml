@@ -1,0 +1,12 @@
+id: relationships
+name: Relationships
+goal: Understand the people in their life, how those people shape what they can do right now, and how they like to be spoken to.
+sections: [people, communication]
+sub_agents:
+  - {id: parenting, lens: kids, their needs, parenting load}
+  - {id: partner_family, lens: partner and family support or strain}
+  - {id: social_support, lens: who they can lean on}
+routes:
+  domains: [family, relationships, parenting, kids, partner, friends]
+  words: [kids, kid, son, daughter, baby, husband, wife, partner, mom, mum, dad, family, friend, boss, sick]
+  intents: []

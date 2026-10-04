@@ -1,0 +1,14 @@
+core: growth
+cards:
+  - id: FLOW-challenge-skill
+    source: {book: Flow, chapter: "4 The Conditions of Flow"}
+    principle: Enjoyment comes when challenge matches skill — too easy bores, too hard worries.
+    use_when: {words: [boring, bored, frustrating, stuck, too hard, learning, practice, skill]}
+    offer: Help tune the next step to be a little harder than easy — not a leap.
+    review: draft
+  - id: FLOW-goals-feedback
+    source: {book: Flow, chapter: "3 Enjoyment and the Quality of Life"}
+    principle: Clear goals and immediate feedback make an activity absorbing.
+    use_when: {domains: [cooking, reading, learning, music, skills, hobby], change_talk: [desire, activation]}
+    offer: Suggest one clear small goal for the next attempt and a way to see right away how it went.
+    review: draft

@@ -1,0 +1,12 @@
+id: body
+name: Body
+goal: Keep an accurate, current picture of their physical state — activity, energy, sleep — and what is helping or getting in the way.
+sections: [body, goals]
+sub_agents:
+  - {id: fitness, lens: activity versus their goal, current ability}
+  - {id: energy, lens: energy now and across the day}
+  - {id: sleep, lens: sleep quality lately}
+routes:
+  domains: [fitness, gym, exercise, health, sleep, energy, running, sport, workout]
+  words: [gym, workout, exercise, tired, exhausted, sleep, energy, run, walk, sore, sick]
+  intents: [progress, setback]

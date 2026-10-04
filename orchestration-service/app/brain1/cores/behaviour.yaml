@@ -1,0 +1,13 @@
+id: behaviour
+name: Behaviour
+goal: Understand why they act — or don't — the way they do around their goals; what really blocks them and what moves them.
+sections: [goals, what_works]
+sub_agents:
+  - {id: motivation, lens: their own reasons versus pressure}
+  - {id: habits, lens: cues, routines and what makes it easy or hard}
+  - {id: barriers, lens: the real blocker — ability, opportunity or motivation}
+  - {id: readiness, lens: thinking about it, preparing, doing, maintaining}
+routes:
+  domains: [fitness, gym, habits, goals, cooking, reading, learning]
+  words: [motivation, "can't", "couldn't", "didn't", skip, skipped, missed, start, stick, habit, goal, plan]
+  intents: [setback, progress, pushback]

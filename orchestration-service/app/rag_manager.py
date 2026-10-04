@@ -141,3 +141,38 @@ def delete_document(document_id: str, profile_email: str) -> dict[str, Any]:
     marked = rag_documents_repo.mark_document_deleted(document_id, profile_email)
     assert marked is not None
     return marked
+
+
+def search_books(query: str, top_k: int = 3, book: str | None = None) -> list[dict[str, Any]]:
+    """Searches the shared book library (KNOWLEDGE_BASE_SCOPE) for Brain 1's
+    Base knowledge (Building_Brain1.md §9, ADD ADR-020) — ranked by similarity
+    ONLY. Unlike `retrieve`, recency never counts: a book chapter is not less
+    true because it was ingested last month. `book` keeps only chunks whose
+    title contains it (case-insensitive), e.g. 'atomic habits'.
+    """
+    query = (query or '').strip()
+    if not query:
+        return []
+    matches = rag_store.query_similar_chunks(query, KNOWLEDGE_BASE_SCOPE, n_results=top_k * (6 if book else 2))
+
+    results: list[dict[str, Any]] = []
+    for match in matches:
+        chunk = rag_documents_repo.get_chunk(match['chunk_id'], KNOWLEDGE_BASE_SCOPE)
+        if chunk is None:
+            continue
+        document = rag_documents_repo.get_document(chunk['document_id'], KNOWLEDGE_BASE_SCOPE)
+        if document is None or document['status'] != rag_documents_repo.INGESTED:
+            continue
+        title = document.get('title') or ''
+        if book and book.lower() not in title.lower():
+            continue
+        results.append(
+            {
+                'book': title,
+                'chunk_index': chunk['chunk_index'],
+                'content': chunk['content'],
+                'similarity': round(1.0 - (min(max(match['distance'], 0.0), 2.0) / 2.0), 4),
+            }
+        )
+    results.sort(key=lambda r: r['similarity'], reverse=True)
+    return results[:top_k]

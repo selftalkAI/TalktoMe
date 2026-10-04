@@ -6,6 +6,7 @@ from .base import Agent
 from .brain_one import BrainOne
 from .broca import Broca
 from .calendar_agent import CalendarAgent
+from .core_agent import CoreAgent
 from .email_digest_agent import EmailDigestAgent
 from .hippocampus import Hippocampus
 from .prefrontal_cortex import PrefrontalCortex
@@ -35,6 +36,7 @@ _REGISTRY: dict[str, Agent] = {
     Broca.name: Broca(),
     AnteriorCingulate.name: AnteriorCingulate(),
     WorldKnowledge.name: WorldKnowledge(),
+    CoreAgent.name: CoreAgent(),
     CalendarAgent.name: CalendarAgent(),
     EmailDigestAgent.name: EmailDigestAgent(),
     BrainOne.name: BrainOne(),
