@@ -174,11 +174,68 @@ def _suggest_next_step(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+STANCES = ('listen', 'motivate', 'plan', 'teach', 'challenge', 'celebrate', 'mirror', 'ask')
+MOVES = (
+    'reflect', 'affirm', 'open_question', 'summarize', 'ask_permission',
+    'offer_idea', 'celebrate', 'answer_question', 'follow_up', 'care',
+)
+
+
+def _plan_reply(payload: dict[str, Any]) -> dict[str, Any]:
+    """Brain 2's Decide step (Building_Brain2.md §9.4.2): plans — never
+    writes — the next reply, in the persona Brain 1 picked. Output is a small
+    plan the Speak step turns into words; Orchestration's plan rules then
+    enforce the hard limits (safety, one question, answer their question
+    first), so nothing here needs to be trusted for those.
+    """
+    persona = payload.get('persona') or {}
+    pack: dict[str, str] = payload.get('context_pack') or {}
+    reading = payload.get('reading') or {}
+    known = '\n'.join(f'{k}: {v}' for k, v in pack.items() if k != 'first_name' and (v or '').strip())
+
+    system_prompt = (
+        "You plan — you do not write — the next reply to someone you know well. "
+        f"You are speaking as: {persona.get('voice', 'friend')}, with {persona.get('expertise', 'general life')} know-how. "
+        "An excellent coach understands before advising, uses the person's own reasons, offers an idea "
+        "only as an option, and asks at most one question. Pick what they need most right now.\n"
+        "Return JSON only:\n"
+        '{"stance": one of ' + '|'.join(STANCES) + ',\n'
+        ' "moves": one or two of ' + '|'.join(MOVES) + ',\n'
+        ' "question": the one question to ask, or null,\n'
+        ' "idea": one small concrete idea to offer as an option, or null,\n'
+        ' "why": one short sentence}'
+    )
+    prompt = (
+        f'What you know about them:\n{known or "(very little yet)"}\n\n'
+        f'Conversation:\n{_shared.conversation_text(payload.get("conversation") or [], payload.get("latest_message") or "")}\n\n'
+        f'Your reading of their latest message: {json.dumps(reading)}'
+    )
+    response = get_model_provider('large').chat([{'role': 'user', 'content': prompt}], system=system_prompt)
+    return _normalise_plan(_shared.parse_json_object(response))
+
+
+def _normalise_plan(parsed: dict[str, Any]) -> dict[str, Any]:
+    moves = parsed.get('moves')
+    if isinstance(moves, str):
+        moves = [moves]
+    moves = [m for m in (moves or []) if m in MOVES][:2]
+    question = parsed.get('question')
+    idea = parsed.get('idea')
+    return {
+        'stance': parsed.get('stance') if parsed.get('stance') in STANCES else None,
+        'moves': moves,
+        'question': question.strip() if isinstance(question, str) and question.strip().lower() not in ('', 'null') else None,
+        'idea': idea.strip() if isinstance(idea, str) and idea.strip().lower() not in ('', 'null') else None,
+        'why': parsed.get('why') if isinstance(parsed.get('why'), str) else '',
+    }
+
+
 _GRAPH = router_graph(
     {
         'reflect_moment': _reflect_moment,
         'evolution_narrative': _evolution_narrative,
         'suggest_next_step': _suggest_next_step,
+        'plan_reply': _plan_reply,
     },
     default='reflect_moment',
 )
@@ -187,8 +244,9 @@ _GRAPH = router_graph(
 class PrefrontalCortex:
     """Higher-order reasoning (ADD §8): connects past to present, decides
 
-    what's needed next. Three nodes routed by `operation` — what used to be
-    `SmartAgent._reflect_moment`/`_evolution_narrative`/`_suggest_next_step`.
+    what's needed next. Four nodes routed by `operation`: `reflect_moment`,
+    `evolution_narrative`, `suggest_next_step`, and `plan_reply` (Brain 2's
+    Decide step).
     """
 
     name = 'prefrontal_cortex'

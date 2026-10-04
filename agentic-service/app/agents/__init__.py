@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .amygdala import Amygdala
+from .anterior_cingulate import AnteriorCingulate
 from .base import Agent
 from .brain_one import BrainOne
 from .broca import Broca
@@ -13,7 +14,7 @@ from .thalamus import Thalamus
 from .world_knowledge import WorldKnowledge
 
 # The cognitive agents (Thalamus, Sensory Cortex, Hippocampus, Prefrontal
-# Cortex, Amygdala, Broca's Area) are Brain 2's reasoning, each doing one
+# Cortex, Amygdala, Broca's Area, Anterior Cingulate) are Brain 2's reasoning, each doing one
 # distinct job, each with its own LangGraph-backed workflow (see
 # `_graph.py`) — replacing the single SmartAgent/ProfileAgent classes that
 # used to hold all six behind an if/elif dispatch. WorldKnowledge is not one
@@ -32,6 +33,7 @@ _REGISTRY: dict[str, Agent] = {
     PrefrontalCortex.name: PrefrontalCortex(),
     Amygdala.name: Amygdala(),
     Broca.name: Broca(),
+    AnteriorCingulate.name: AnteriorCingulate(),
     WorldKnowledge.name: WorldKnowledge(),
     CalendarAgent.name: CalendarAgent(),
     EmailDigestAgent.name: EmailDigestAgent(),

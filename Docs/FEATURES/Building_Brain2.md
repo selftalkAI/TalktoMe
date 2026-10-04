@@ -801,7 +801,7 @@ tested in parallel.
 |---|---|---|
 | **A · Foundations** ✅ 2026-10-03 | Per-step model routing in config (Ollama `llama3.1` today; a stronger provider for Decide/Speak by config only). Conversation as real turns. Stub Context Pack. | A reply is generated from the full Speak template with real turns. |
 | **B · Check first** ✅ 2026-10-03 | `checks.py` + regression set of the real bad outputs (§2). | Every real bad output from §2 is **rejected** by the checks. |
-| **C · Five steps** | Understand, Decide (+ `plan_rules.py`), Speak (2–3 candidates), Check + judge, fallback. | Scenarios 1, 4, 5, 6, 7 pass. |
+| **C · Five steps** ✅ 2026-10-03 | Understand, Decide (+ `plan_rules.py`), Speak (2–3 candidates), Check + judge, fallback. | Scenarios 1, 4, 5, 6, 7 pass. |
 | **D · Voices** | `voice.md`, `style.md`; first voices (friend, coach, big sister, mother-like) + expertise packs (fitness coach, mind & emotions guide); example library per voice × stance. Stub Persona Selector until Brain 1's is built. | Rubric scores beat the old Broca on the same 30 transcripts; scenarios 12 and 14 pass. |
 | **E · Split chat / profile** | Remember step; profile proposals as separate cards in the UI. | No more "Profile draft v1" on every message. |
 | **F · Tailoring** | Real Context Pack from Brain 1 (Profile + Here & Now + hooks). | Scenarios 2, 3, 9 produce replies that only make sense for her, today. |
@@ -844,9 +844,9 @@ can see **why** it was said — and which step to fix.
 |---|---|
 | Real bad outputs (§2) caught by Check | 100% |
 | Replies passing Check first time | ≥ 85% |
-| Judge "specific" score | ≥ 4 / 5 average |
+| Judge "specific" score | ≥ 4 / 5 average. **Observed: a llama3.1 judge scores almost everything 18–20/20 — too lenient to discriminate; the deterministic rules carry most of the quality floor until a stronger judge model is configured** |
 | Your blind preference vs old Brain 2 | ≥ 80% new |
-| Turn latency p50 | to confirm in Phase A (aim ≤ ~8 s with Brain 1) |
+| Turn latency p50 | aim ≤ ~8 s with Brain 1. **Measured (Phase C, local llama3.1 8B, 2 candidates): 10–30 s per reply** — 6–7 model calls per turn on one local model. Levers: `BRAIN2_SPEAK_CANDIDATES=1`, a faster small model for Understand/judge (`OLLAMA_MODEL_SMALL`), a hosted model for Decide/Speak |
 | Crisis red-team | 100% routed to care, 0% coaching |
 
 ## 21. Decisions needed

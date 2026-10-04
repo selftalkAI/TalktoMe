@@ -4,16 +4,23 @@ import json
 from typing import Any
 
 from ..brain1 import context_pack
+from ..config import settings
 from ..spinal_cord import AgenticServiceClient, AgenticServiceError
+from . import plan_rules
 from .checks import check_reply
 
-# Brain 2's turn (Building_Brain2.md §7–§9). Today: Context Pack → plan →
-# Speak → Check → one rewrite → safe fallback. Understand and Decide replace
-# `plan_for` with model-planned replies in Phase C; Remember (chat vs profile
-# split) arrives in Phase E. The contract that matters already holds: no
-# reply reaches the person unless it passed Check (FSD BR-016).
+# Brain 2's turn (Building_Brain2.md §6–§9):
+#   Context Pack (Brain 1) → Understand → Decide → plan rules → Speak ×N
+#   → Check (rules, then judge) → best passing reply
+#   → else one rewrite with the reasons → else a safe fallback.
+# The contract: no reply reaches the person unless it passed Check
+# (FSD BR-016). Remember (chat vs profile split) arrives in Phase E.
 
-MAX_SPEAK_ATTEMPTS = 2
+MIN_JUDGE_TOTAL = 10  # of 20: below this, a rule-passing draft still isn't good enough to send
+
+# Until Brain 1's Persona Selector exists (Building_Brain1.md §12.4), every
+# reply uses the default persona the prompt files describe.
+DEFAULT_PERSONA = {'voice': 'a warm friend', 'expertise': 'everyday coaching'}
 
 
 def reply(
@@ -30,81 +37,162 @@ def reply(
     checkin_mode: bool = False,
     escalation_level: int = 0,
 ) -> dict[str, Any]:
-    """One checked reply. Returns `content` plus how it got there: `attempts`,
-    `failures` (from every rejected draft) and `fallback` (True when no draft
-    passed and the safe fallback was sent instead).
+    """One checked reply. Returns `content` plus the trace of how it was
+    made: `reading`, `plan`, `verdict` (the judge's scores for the sent
+    reply), `attempts` (Speak calls), `failures` (why drafts were rejected)
+    and `fallback` (True when nothing passed and the safe fallback was sent).
 
-    `conversation` is this thread so far as real turns
+    `conversation` is the thread so far as real turns
     (`{'role': 'user'|'assistant', 'content': ...}`), oldest first, NOT
     including `latest_message`. `trigger` is 'message' when the person just
-    wrote, or 'silence'/'schedule' when Brain 2 is reaching out on its own.
+    wrote, or 'silence'/'schedule' when Brain 2 reaches out on its own.
     """
     conversation = conversation or []
     pack = context_pack.compile_stub(
         profile_email, domain, intention=intention, checkins=checkins, streak=streak, support_message=support_message
     )
-    plan = plan_for(latest_message, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level)
-    previous = [t['content'] for t in conversation if t.get('role') == 'assistant']
-    allowed_text = '\n'.join([pack['allowed_text'], latest_message, *(t.get('content', '') for t in conversation)])
+    turn = _Turn(profile_email, pack, conversation, latest_message)
 
-    failures: list[str] = []
-    feedback = ''
-    for attempt in range(1, MAX_SPEAK_ATTEMPTS + 1):
+    reading = turn.understand() if trigger == 'message' else {}
+    decided = turn.decide(reading) if trigger == 'message' else {}
+    plan = plan_rules.apply(decided, reading, trigger=trigger, checkin_mode=checkin_mode, escalation_level=escalation_level)
+
+    best = turn.best_of(plan, settings.brain2_speak_candidates, feedback='')
+    if best is None and turn.speak_available:
+        best = turn.best_of(plan, 1, feedback=turn.rewrite_feedback())
+
+    trace = {'reading': reading, 'plan': plan, 'attempts': turn.attempts, 'failures': turn.failures}
+    if best is not None:
+        return {'content': best['content'], 'verdict': best['verdict'], 'fallback': False, **trace}
+    return {'content': fallback_reply(pack['first_name'], trigger, turn.previous), 'verdict': None, 'fallback': True, **trace}
+
+
+class _Turn:
+    """The state of one reply being made: what was tried, what failed, why."""
+
+    def __init__(self, profile_email: str, pack: dict[str, Any], conversation: list[dict[str, str]], latest_message: str) -> None:
+        self.profile_email = profile_email
+        self.pack = pack
+        self.conversation = conversation
+        self.latest_message = latest_message
+        self.previous = [t['content'] for t in conversation if t.get('role') == 'assistant']
+        self.allowed_text = '\n'.join([pack['allowed_text'], latest_message, *(t.get('content', '') for t in conversation)])
+        self.public_pack = {k: v for k, v in pack.items() if k not in ('allowed_text', 'blocked_terms')}
+        self.attempts = 0
+        self.failures: list[str] = []
+        self.speak_available = True
+        self.examples: list[str] = []  # the prompt's example replies, so a copied example is caught
+
+    # --- Understand / Decide --------------------------------------------------
+
+    def understand(self) -> dict[str, Any]:
+        """Sensory Cortex `read_message`; on failure, only what code can tell."""
+        result = self._run(
+            'sensory_cortex',
+            {'operation': 'read_message', 'latest_message': self.latest_message, 'conversation': self.conversation},
+        )
+        if result is not None:
+            return result
+        return {'asked_question': self.latest_message if '?' in self.latest_message else None}
+
+    def decide(self, reading: dict[str, Any]) -> dict[str, Any]:
+        """Prefrontal Cortex `plan_reply`; on failure the plan rules choose."""
+        result = self._run(
+            'prefrontal_cortex',
+            {
+                'operation': 'plan_reply',
+                'persona': DEFAULT_PERSONA,
+                'context_pack': self.public_pack,
+                'conversation': self.conversation,
+                'latest_message': self.latest_message,
+                'reading': reading,
+            },
+        )
+        return result or {}
+
+    # --- Speak / Check --------------------------------------------------------
+
+    def best_of(self, plan: dict[str, Any], candidates: int, feedback: str) -> dict[str, Any] | None:
+        """Speaks `candidates` drafts; returns the best one that passes both
+        the rules and the judge, or None."""
+        passing: list[dict[str, Any]] = []
+        for _ in range(candidates):
+            draft = self._speak(plan, feedback)
+            if draft is None:
+                break
+            verdict = self._check(draft, plan)
+            if verdict is not None:
+                passing.append({'content': draft, 'verdict': verdict})
+        return max(passing, key=lambda p: p['verdict']['total']) if passing else None
+
+    def rewrite_feedback(self) -> str:
+        return '; '.join(dict.fromkeys(self.failures))[:600]
+
+    def _speak(self, plan: dict[str, Any], feedback: str) -> str | None:
+        result = self._run(
+            'broca',
+            {
+                'operation': 'speak',
+                'context_pack': self.public_pack,
+                'plan': plan['words'],
+                'conversation': self.conversation,
+                'latest_message': self.latest_message,
+                'rewrite_feedback': feedback,
+            },
+        )
+        self.attempts += 1
+        if result is None or not (result.get('content') or '').strip():
+            self.speak_available = False
+            self.failures.append('speak unavailable')
+            return None
+        self.examples = result.get('example_replies') or self.examples
+        return result['content'].strip()
+
+    def _check(self, draft: str, plan: dict[str, Any]) -> dict[str, Any] | None:
+        """Rules first (free, deterministic), then the judge. Returns the
+        judge's verdict if the draft may be sent, else None."""
+        rules = check_reply(
+            draft,
+            previous_replies=self.previous + self.examples,
+            allowed_text=self.allowed_text,
+            blocked_terms=self.pack['blocked_terms'],
+        )
+        if not rules.passed:
+            self.failures.extend(rules.failures)
+            return None
+
+        verdict = self._run(
+            'anterior_cingulate',
+            {
+                'reply': draft,
+                'voice': DEFAULT_PERSONA['voice'],
+                'plan': plan['words'],
+                'facts': '\n'.join(v for k, v in self.public_pack.items() if k != 'first_name' and v),
+                'conversation': self.conversation,
+                'latest_message': self.latest_message,
+            },
+        )
+        if verdict is None:  # judge unavailable: the rules already passed it
+            return {'total': 0, 'contradicts': False, 'problem': None, 'judged': False}
+        if verdict.get('contradicts'):
+            self.failures.append(f"contradicts what they said ({verdict.get('problem') or 'judge'})")
+            return None
+        if verdict.get('total', 0) < MIN_JUDGE_TOTAL:
+            self.failures.append(f"judged weak ({verdict.get('problem') or 'generic'})")
+            return None
+        return {**verdict, 'judged': True}
+
+    # --- Agentic Service ------------------------------------------------------
+
+    def _run(self, agent: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        """One agent call; None when the service or the agent fails."""
         try:
-            spoken = _speak(profile_email, pack, plan, conversation, latest_message, feedback)
-        except AgenticServiceError as exc:
-            failures.append(f'speak unavailable: {exc}')
-            break
-        result = check_reply(
-            spoken['content'],
-            previous_replies=previous + spoken.get('example_replies', []),
-            allowed_text=allowed_text,
-            blocked_terms=pack['blocked_terms'],
-        )
-        if result.passed:
-            return {'content': spoken['content'], 'attempts': attempt, 'failures': failures, 'fallback': False}
-        failures.extend(result.failures)
-        feedback = result.feedback()
-
-    return {
-        'content': fallback_reply(pack['first_name'], trigger, previous),
-        'attempts': MAX_SPEAK_ATTEMPTS,
-        'failures': failures,
-        'fallback': True,
-    }
-
-
-def plan_for(latest_message: str, *, trigger: str, checkin_mode: bool, escalation_level: int) -> str:
-    """A rule-based plan in plain words — the stand-in for the Decide step
-    (Building_Brain2.md §8.4.2) until Phase C. It encodes the coaching
-    behaviours of §4: understand before advising, answer their question
-    first, one question at most, offer ideas only as options.
-    """
-    if trigger != 'message' or not latest_message.strip():
-        plan = (
-            "They haven't replied since your last message. Check in warmly and briefly — about them, "
-            "not the goal. Don't repeat or rephrase your last message. No pressure."
-        )
-        if escalation_level > 0:
-            plan += ' Your earlier check-ins got no answer, so keep this one even lighter and try a different angle.'
-        return plan
-
-    if '?' in latest_message:
-        return 'They asked you something. Answer it first, briefly and concretely. Add nothing they did not ask for.'
-
-    if checkin_mode:
-        return (
-            "They didn't manage it today, or didn't say how it went — never claim they did. First reflect what "
-            "they said — and their reason, "
-            'if they gave one — without judging. Then, only if it fits, offer one small, easy next step as an '
-            'option they can choose. Ask at most one question.'
-        )
-
-    return (
-        'Respond to what they just said. Show you understood it, using their life — not generic praise. '
-        'If they made progress, name the real effort plainly. Offer an idea only as an option, and ask at '
-        'most one question.'
-    )
+            run = AgenticServiceClient().create_agent_run(agent, user_id=self.profile_email, goal=json.dumps(payload))
+        except AgenticServiceError:
+            return None
+        steps = run.get('steps') or []
+        result = steps[0].get('result') if run.get('status') == 'completed' and steps else None
+        return result if isinstance(result, dict) else None
 
 
 def fallback_reply(first_name: str, trigger: str, previous_replies: list[str]) -> str:
@@ -122,27 +210,3 @@ def fallback_reply(first_name: str, trigger: str, previous_replies: list[str]) -
         if option not in previous_replies:
             return option
     return options[0]
-
-
-def _speak(
-    profile_email: str,
-    pack: dict[str, Any],
-    plan: str,
-    conversation: list[dict[str, str]],
-    latest_message: str,
-    rewrite_feedback: str,
-) -> dict[str, Any]:
-    payload = {
-        'operation': 'speak',
-        'context_pack': {k: v for k, v in pack.items() if k not in ('allowed_text', 'blocked_terms')},
-        'plan': plan,
-        'conversation': conversation,
-        'latest_message': latest_message,
-        'rewrite_feedback': rewrite_feedback,
-    }
-    run = AgenticServiceClient().create_agent_run('broca', user_id=profile_email, goal=json.dumps(payload))
-    steps = run.get('steps') or []
-    result = steps[0].get('result') if run.get('status') == 'completed' and steps else None
-    if not isinstance(result, dict) or not (result.get('content') or '').strip():
-        raise AgenticServiceError(f"broca speak returned no reply (run status: {run.get('status')})")
-    return result

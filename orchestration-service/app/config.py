@@ -31,6 +31,9 @@ class Settings:
         # it does not make the process itself run while the machine is asleep.
         self.brain2_scheduler_enabled: bool = os.getenv('BRAIN2_SCHEDULER_ENABLED', 'true').lower() == 'true'
         self.brain2_recheck_interval_hours: float = float(os.getenv('BRAIN2_RECHECK_INTERVAL_HOURS', '24'))
+        # Brain 2 Speak candidates per reply (Building_Brain2.md §9.4.4). More = better odds of a
+        # good reply, but each one is a model call — 2 is the default trade-off.
+        self.brain2_speak_candidates: int = max(1, int(os.getenv('BRAIN2_SPEAK_CANDIDATES', '2')))
 
 
 settings = Settings()

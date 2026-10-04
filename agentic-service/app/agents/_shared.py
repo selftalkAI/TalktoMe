@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
 from typing import Any
 
@@ -68,3 +70,33 @@ def narrative_focus_clause(payload: dict[str, Any]) -> str:
     if context_notes:
         clause += f' specific things they mentioned: "{context_notes}";'
     return clause
+
+
+_JSON_OBJECT_RE = re.compile(r'\{.*\}', re.DOTALL)
+
+
+def parse_json_object(text: str) -> dict[str, Any]:
+    """The first JSON object in a model response, or {} — small local models
+    often wrap JSON in prose or code fences; callers apply their own
+    defaults for anything missing rather than failing the turn."""
+    match = _JSON_OBJECT_RE.search(text or '')
+    if not match:
+        return {}
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def conversation_text(conversation: list[dict[str, str]], latest_message: str, limit: int = 6) -> str:
+    """The last few turns as "Them:/You:" lines — for steps that read the
+    conversation as context rather than continue it."""
+    lines = [
+        f"{'You' if t.get('role') == 'assistant' else 'Them'}: {(t.get('content') or '').strip()}"
+        for t in conversation[-limit:]
+        if (t.get('content') or '').strip()
+    ]
+    if latest_message.strip():
+        lines.append(f'Them (latest): {latest_message.strip()}')
+    return '\n'.join(lines) or '(no conversation yet)'
