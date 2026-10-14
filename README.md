@@ -68,6 +68,14 @@ To use AWS Bedrock instead of Ollama once you're ready, edit `agentic-service/.e
 `MODEL_PROVIDER=bedrock`, then run `aws configure` (or set AWS env vars) and enable the
 chosen model in the Bedrock console. Nothing in Orchestration or the Portal changes.
 
+## Brain 1 / Brain 2 agents (Claude Code)
+
+`brain-pipeline/` runs Brain 1 (capture your journals, notes and app entries) and
+Brain 2 (extract → review → propose Profile entries) as Claude Code agents on your
+Claude plan — no Ollama needed. In Claude Code: `/brain init <you> --email <email>`,
+then `/brain <you>`. Proposals show up in the app for you to accept. See
+`brain-pipeline/ARCHITECTURE.md`.
+
 ## Product intent
 
 The current version is intentionally simple and focused on the founder pilot:

@@ -19,3 +19,6 @@ Storage/sql_storage/*
 !Storage/sql_storage/.gitkeep
 Storage/rag_storage/*
 !Storage/rag_storage/.gitkeep
+
+# Brain 1 / Brain 2 pipeline working folder — personal data, never committed.
+brain-pipeline/tmp/
