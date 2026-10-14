@@ -128,7 +128,7 @@ export default function TalkScreen({ profile, regionColors }: { profile: Profile
   let lastDay = '';
 
   return (
-    <div className="screen" style={{ paddingBottom: 220 }}>
+    <div className="screen" style={{ paddingBottom: 240 }}>
       <header className="talk-head">
         <NeuralOrb colors={regionColors} thinking={thinking} size={170} />
         <p className="kicker">{thinking ? 'Your brain is thinking' : 'Your second brain is listening'}</p>

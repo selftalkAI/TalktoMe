@@ -58,7 +58,7 @@ export default function ThoughtCard({ kind, domain, text, busy, onYes, onNo, onR
       </div>
       <p className="say" style={{ fontSize: kind === 'thought' ? 20 : 19 }}>{text}</p>
       <div className="btn-row">
-        <button type="button" className="btn btn-thought btn-sm" disabled={busy} onClick={onYes}>
+        <button type="button" className="btn btn-thought btn-sm" style={{ flex: 1.3 }} disabled={busy} onClick={onYes}>
           That&rsquo;s me
         </button>
         {kind === 'thought' && onRefine ? (

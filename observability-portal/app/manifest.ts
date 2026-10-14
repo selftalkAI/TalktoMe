@@ -2,14 +2,14 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'me — a daily record of your own thoughts',
-    short_name: 'me',
-    description: 'A daily record of your own thoughts, reflected back to you — nothing else.',
+    name: 'selfie.Me',
+    short_name: 'selfie.Me',
+    description: 'Talk to yourself. Your brain is listening.',
     start_url: '/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#faf7f2',
-    theme_color: '#faf7f2',
+    background_color: '#0e1915',
+    theme_color: '#0e1915',
     icons: [
       {
         src: '/icon.svg',

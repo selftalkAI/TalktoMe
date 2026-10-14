@@ -18,7 +18,7 @@ export default function RegionMap({ areas, onOpen }: { areas: KeyArea[]; onOpen:
     <svg
       role="img"
       aria-label={`Your brain map: ${placed.map((a) => `${regionLabel(a.domain)} ${a.active_memory_count} neurons`).join(', ')}`}
-      viewBox="0 0 360 300"
+      viewBox="22 4 330 256"
       width="100%"
       style={{ display: 'block' }}
     >
