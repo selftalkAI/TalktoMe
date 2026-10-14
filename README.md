@@ -76,6 +76,16 @@ Claude plan — no Ollama needed. In Claude Code: `/brain init <you> --email <em
 then `/brain <you>`. Proposals show up in the app for you to accept. See
 `brain-pipeline/ARCHITECTURE.md`.
 
+## Brain 2 actions on Claude
+
+Each Brain 2 action (Thalamus, Sensory Cortex, Hippocampus, Prefrontal Cortex,
+Amygdala, Broca, World Knowledge) also exists as a Claude agent in
+`.claude/agents/brain2-*.md`, with the same input and output JSON as its Python
+agent. Set `AGENT_ENGINE=claude` in `agentic-service/.env` and the service runs
+each action on Claude via the Claude Code CLI (your signed-in Claude plan, no API
+key). Nothing else changes: same endpoints, same workflow, same results.
+Embeddings still come from `MODEL_PROVIDER`.
+
 ## Product intent
 
 The current version is intentionally simple and focused on the founder pilot:

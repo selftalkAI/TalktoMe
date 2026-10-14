@@ -68,11 +68,23 @@ def router_graph(nodes: dict[str, NodeFn], default: str, route_key: str = 'opera
     return graph.compile()
 
 
-def run(graph, args: dict[str, Any]) -> dict[str, Any]:
+def run(graph, args: dict[str, Any], agent: str | None = None) -> dict[str, Any]:
     """Invokes a compiled agent graph and hands back just its `result` —
 
     what every agent's `execute_step` calls, matching the `Agent` protocol's
     `execute_step(step) -> dict[str, Any]` return shape.
+
+    With AGENT_ENGINE=claude, the same `args` go to this agent's Claude
+    agent in `.claude/agents/` instead (see `_claude.py`) and come back in
+    the same result shape — the outer workflow can't tell the difference.
     """
+    from ..config import settings
+
+    if settings.agent_engine == 'claude':
+        from . import _claude
+
+        if _claude.supports(agent):
+            return _claude.run_agent(agent, args)
+
     final_state: NodeState = graph.invoke({'args': args, 'result': {}})
     return final_state['result']

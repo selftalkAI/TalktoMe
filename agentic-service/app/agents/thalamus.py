@@ -99,4 +99,4 @@ class Thalamus:
         ]
 
     def execute_step(self, step: PlanStep) -> dict[str, Any]:
-        return run(_GRAPH, step.args)
+        return run(_GRAPH, step.args, agent=self.name)

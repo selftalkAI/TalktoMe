@@ -206,4 +206,4 @@ class PrefrontalCortex:
         ]
 
     def execute_step(self, step: PlanStep) -> dict[str, Any]:
-        return run(_GRAPH, {**step.args, 'operation': step.operation})
+        return run(_GRAPH, {**step.args, 'operation': step.operation}, agent=self.name)
